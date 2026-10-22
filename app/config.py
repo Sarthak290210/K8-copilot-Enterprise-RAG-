@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,10 +14,18 @@ class Settings(BaseSettings):
     )
 
     # === LLM & Embeddings ===
-    groq_api_key: SecretStr
-    groq_base_url: str = "https://api.groq.com/openai/v1"
-    llm_model_answer: str = "openai/gpt-oss-120b"
-    llm_model_grader: str = "openai/gpt-oss-20b"
+    # Cerebras (OpenAI-compatible API). Switched from Groq on 2026-10-22: Groq's free tier
+    # (200k tokens/day per model) couldn't fit one eval run, and its paid tier was closed.
+    # Cerebras free trial: 1M tokens/day and 5 requests/min per model.
+    cerebras_api_key: SecretStr
+    cerebras_base_url: str = "https://api.cerebras.ai/v1"
+    llm_model_answer: str = "gpt-oss-120b"
+    llm_model_grader: str = "gpt-oss-120b"  # Cerebras has no gpt-oss-20b
+    # Ragas judge for faithfulness / answer_relevancy: a different model family from the answer
+    # model (no self-grading bias) with its own daily token budget.
+    eval_judge_model: str = "qwen-3.8-27b"
+    # gpt-oss reasoning depth: more = slower and more tokens.
+    llm_reasoning_effort: Literal["low", "medium", "high"] = "low"
     embedding_provider: Literal["sentence-transformers"] = "sentence-transformers"
     embedding_model: str = "BAAI/bge-base-en-v1.5"
     embedding_dim: int = 768
@@ -50,6 +58,10 @@ class Settings(BaseSettings):
     # === Auth ===
     jwt_secret: SecretStr
     jwt_expiration_minutes: int = 60
+
+    # === Seed users (scripts/seed_db.py; a user is skipped if its password is unset) ===
+    seed_admin_password: SecretStr | None = None
+    seed_analyst_password: SecretStr | None = None
 
     # === Rate limit + budget ===
     rate_limit_requests: int = 20
@@ -100,6 +112,14 @@ class Settings(BaseSettings):
     # === Logging ===
     log_json: bool = False
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+
+    @field_validator("jwt_secret")
+    @classmethod
+    def jwt_secret_is_strong(cls, v: SecretStr) -> SecretStr:
+        # A short HS256 key can be brute-forced, letting anyone forge admin tokens.
+        if len(v.get_secret_value()) < 32:
+            raise ValueError("JWT_SECRET must be at least 32 characters")
+        return v
 
 
 @lru_cache

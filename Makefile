@@ -1,19 +1,24 @@
-.PHONY: help install sync seed seed-data api streamlit eval eval-baseline eval-hybrid eval-rerank eval-hyde eval-crag eval-all eval-diff test lint format
+.PHONY: help install sync up down seed seed-docs seed-data api streamlit test lint format validate \
+	eval eval-baseline eval-sparse eval-hybrid eval-rerank eval-hyde eval-crag eval-all \
+	eval-diff eval-record
 
+# On Windows without `make`, run the `uv run ...` line under a target directly.
 
 help:
-	@echo "ADV RAG — Available commands"
+	@echo "k8-copilot — available commands"
 	@echo ""
-	@echo "  make install       — create venv & install all deps (one-time)"
-	@echo "  make sync          — sync deps with pyproject.toml"
-	@echo "  make seed          — seed DB + ingest docs into Qdrant"
-	@echo "  make seed-data     — download + generate the 95/5 noise corpus (~130-200 MB)"
-	@echo "  make api           — start FastAPI backend (:8000)"
-	@echo "  make streamlit     — start Streamlit UI (:8501)"
-	@echo "  make eval          — run baseline + all + diff"
-	@echo "  make test          — run pytest"
-	@echo "  make lint          — run ruff check"
-	@echo "  make format        — run ruff format"
+	@echo "  make install       create venv & install all deps (one-time)"
+	@echo "  make sync          sync deps with pyproject.toml"
+	@echo "  make up / down     start / stop postgres + qdrant + api (docker compose)"
+	@echo "  make seed          migrations + seed users (+ doc ingestion from Phase 1)"
+	@echo "  make api           FastAPI backend on :8000 (reload)"
+	@echo "  make streamlit     Streamlit UI on :8501 (Phase 1)"
+	@echo "  make test          pytest"
+	@echo "  make lint/format   ruff check / ruff format"
+	@echo "  make validate      validate eval/golden_questions.yaml"
+	@echo "  make eval-<name>   run one eval profile (baseline sparse hybrid rerank hyde crag all)"
+	@echo "  make eval-diff A=<a.json> B=<b.json>"
+	@echo "  make eval-record FILE=<result.json> PHASE=<n> NOTE=\"<text>\""
 
 
 install:
@@ -23,6 +28,12 @@ install:
 
 sync:
 	uv sync --extra dev
+
+up:
+	docker compose up -d --build
+
+down:
+	docker compose down
 
 seed:
 	uv run python scripts/seed_db.py
@@ -40,8 +51,24 @@ streamlit:
 	uv run streamlit run scripts/streamlit_app.py
 
 
+test:
+	uv run pytest tests/ -v
+
+lint:
+	uv run ruff check .
+
+format:
+	uv run ruff format .
+
+validate:
+	uv run python -m eval.schema
+
+
 eval-baseline:
 	uv run python -m eval.run_ragas --profile naive
+
+eval-sparse:
+	uv run python -m eval.run_ragas --profile sparse_only
 
 eval-hybrid:
 	uv run python -m eval.run_ragas --profile hybrid
@@ -58,29 +85,16 @@ eval-crag:
 eval-all:
 	uv run python -m eval.run_ragas --profile all
 
+# Baseline + all, then compare the newest of each.
 eval: eval-baseline eval-all
-	$(MAKE) eval-diff
-
-eval-diff:
 	@latest_naive=$$(ls -t eval/results/*_naive.json 2>/dev/null | head -1); \
 	latest_all=$$(ls -t eval/results/*_all.json 2>/dev/null | head -1); \
-	test -n "$$latest_naive" && test -n "$$latest_all" && \
-	  uv run python -m eval.diff $$latest_naive $$latest_all || \
-	  echo "Need at least one _naive.json and one _all.json in eval/results/"
+	uv run python -m eval.diff $$latest_naive $$latest_all
 
-validate:
-	uv run python scripts/validate_goldens.py
+eval-diff:
+	@test -n "$(A)" && test -n "$(B)" || (echo "Usage: make eval-diff A=<a.json> B=<b.json>" && exit 1)
+	uv run python -m eval.diff $(A) $(B)
 
-
-test:
-	uv run pytest tests/ -v
-
-lint:
-	uv run ruff check .
-
-format:
-	uv run ruff format .
-
-
-eval-legacy:
-	@echo "Use: make eval-baseline"
+eval-record:
+	@test -n "$(FILE)" && test -n "$(PHASE)" || (echo "Usage: make eval-record FILE=<json> PHASE=<n> NOTE=\"...\"" && exit 1)
+	uv run python -m eval.record $(FILE) --phase $(PHASE) --note "$(NOTE)"

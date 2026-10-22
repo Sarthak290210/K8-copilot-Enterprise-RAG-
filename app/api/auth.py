@@ -1,8 +1,9 @@
+import asyncio
 from datetime import datetime
-from typing import Annotated
+from pathlib import Path
+from typing import Annotated, LiteralString, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from fastapi.security import OAuth2PasswordRequestForm
 from loguru import logger
 from psycopg.errors import UniqueViolation
 from psycopg.rows import dict_row
@@ -19,15 +20,14 @@ from app.middleware.auth import (
 )
 from app.middleware.rate_limiter import RateLimiter, rate_limit_by_ip
 
-USERS_TABLE_DDL = """
-CREATE TABLE IF NOT EXISTS users (
-    id BIGSERIAL PRIMARY KEY,
-    username TEXT NOT NULL UNIQUE,
-    password_hash TEXT NOT NULL,
-    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+# Single source of truth for the users table; the seed script runs the same file.
+USERS_MIGRATION = (
+    Path(__file__).resolve().parents[2] / "seed" / "migrations" / "001_create_users.sql"
 )
-"""
+
+# Verified against when the username doesn't exist, so unknown and known users take the
+# same bcrypt time and usernames can't be enumerated by response timing.
+_DUMMY_PASSWORD_HASH = hash_password("timing-equalizer-not-a-real-password")
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -45,6 +45,11 @@ class RegisterRequest(BaseModel):
     password: str = Field(min_length=8, max_length=72)  # bcrypt truncates past 72 bytes
 
 
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=72)
+
+
 class UserOut(BaseModel):
     id: int
     username: str
@@ -60,7 +65,7 @@ class TokenResponse(BaseModel):
 
 async def ensure_users_table(pool: AsyncConnectionPool) -> None:
     async with pool.connection() as conn:
-        await conn.execute(USERS_TABLE_DDL)
+        await conn.execute(cast(LiteralString, USERS_MIGRATION.read_text(encoding="utf-8")))
 
 
 def get_pool(request: Request) -> AsyncConnectionPool:
@@ -77,12 +82,14 @@ async def register(
     body: RegisterRequest,
     pool: Annotated[AsyncConnectionPool, Depends(get_pool)],
 ) -> UserOut:
+    # bcrypt is CPU-heavy (~250 ms); a worker thread keeps the event loop free.
+    password_hash = await asyncio.to_thread(hash_password, body.password)
     try:
         async with pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
             await cur.execute(
                 "INSERT INTO users (username, password_hash) VALUES (%s, %s) "
                 "RETURNING id, username, is_admin, created_at",
-                (body.username, hash_password(body.password)),
+                (body.username, password_hash),
             )
             row = await cur.fetchone()
     except UniqueViolation:
@@ -99,26 +106,25 @@ async def register(
     dependencies=[Depends(rate_limit_by_ip(login_limiter))],
 )
 async def login(
-    form: Annotated[OAuth2PasswordRequestForm, Depends()],
+    body: LoginRequest,
     pool: Annotated[AsyncConnectionPool, Depends(get_pool)],
 ) -> TokenResponse:
     async with pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
-            "SELECT username, password_hash, is_admin FROM users WHERE username = %s",
-            (form.username,),
+            "SELECT id, username, password_hash, is_admin FROM users WHERE username = %s",
+            (body.username,),
         )
         row = await cur.fetchone()
-    if row is None or not verify_password(form.password, row["password_hash"]):
+    stored_hash = row["password_hash"] if row else _DUMMY_PASSWORD_HASH
+    password_ok = await asyncio.to_thread(verify_password, body.password, stored_hash)
+    if row is None or not password_ok:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    expires_in = settings.jwt_expiration_minutes * 60
-    token = create_access_token(
-        {"sub": row["username"], "is_admin": row["is_admin"]}, expires_delta=expires_in
-    )
-    return TokenResponse(access_token=token, expires_in=expires_in)
+    token = create_access_token(row["id"], row["username"], row["is_admin"])
+    return TokenResponse(access_token=token, expires_in=settings.jwt_expiration_minutes * 60)
 
 
 @router.get("/me", response_model=UserOut)
@@ -128,8 +134,8 @@ async def me(
 ) -> UserOut:
     async with pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
         await cur.execute(
-            "SELECT id, username, is_admin, created_at FROM users WHERE username = %s",
-            (user.username,),
+            "SELECT id, username, is_admin, created_at FROM users WHERE id = %s",
+            (user.id,),
         )
         row = await cur.fetchone()
     if row is None:

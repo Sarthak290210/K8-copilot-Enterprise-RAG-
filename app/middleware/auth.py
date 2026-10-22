@@ -1,5 +1,5 @@
 from datetime import UTC, datetime, timedelta
-from typing import Annotated, Any
+from typing import Annotated
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -16,6 +16,7 @@ bearer_scheme = HTTPBearer()
 
 
 class User(BaseModel):
+    id: int
     username: str
     is_admin: bool = False
 
@@ -28,13 +29,21 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def create_access_token(payload: dict[str, Any], expires_delta: int | None = None) -> str:
-    """Sign `payload` as a JWT that expires after `expires_delta` seconds."""
-    if expires_delta is None:
-        expires_delta = settings.jwt_expiration_minutes * 60
+def create_access_token(
+    user_id: int, username: str, is_admin: bool, expires_minutes: int | None = None
+) -> str:
+    """Sign {sub, username, is_admin, iat, exp} as an HS256 JWT."""
+    if expires_minutes is None:
+        expires_minutes = settings.jwt_expiration_minutes
     now = datetime.now(UTC)
-    to_encode = {**payload, "iat": now, "exp": now + timedelta(seconds=expires_delta)}
-    return jwt.encode(to_encode, settings.jwt_secret.get_secret_value(), algorithm=JWT_ALGORITHM)
+    payload = {
+        "sub": str(user_id),  # the JWT spec requires `sub` to be a string
+        "username": username,
+        "is_admin": is_admin,
+        "iat": now,
+        "exp": now + timedelta(minutes=expires_minutes),
+    }
+    return jwt.encode(payload, settings.jwt_secret.get_secret_value(), algorithm=JWT_ALGORITHM)
 
 
 async def get_current_user(
@@ -46,7 +55,11 @@ async def get_current_user(
             settings.jwt_secret.get_secret_value(),
             algorithms=[JWT_ALGORITHM],
         )
-        return User(username=payload["sub"], is_admin=payload.get("is_admin", False))
+        return User(
+            id=int(payload["sub"]),
+            username=payload["username"],
+            is_admin=payload.get("is_admin", False),
+        )
     except (jwt.PyJWTError, KeyError, ValueError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

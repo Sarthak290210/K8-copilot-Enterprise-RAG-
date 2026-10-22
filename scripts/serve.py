@@ -19,9 +19,10 @@ def main() -> None:
         log_level=settings.log_level.lower(),
         # Async psycopg can't run on Windows' default ProactorEventLoop.
         loop="asyncio:SelectorEventLoop" if sys.platform == "win32" else "auto",
-        # Trust X-Forwarded-* from a reverse proxy so client IPs (rate limiting) are real.
+        # X-Forwarded-For is trusted only from uvicorn's default 127.0.0.1 (override with the
+        # FORWARDED_ALLOW_IPS env var once a real proxy sits in front). Trusting "*" would let
+        # any client spoof its IP and bypass the per-IP rate limits.
         proxy_headers=True,
-        forwarded_allow_ips="*",
     )
 
 

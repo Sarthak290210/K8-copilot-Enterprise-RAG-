@@ -23,3 +23,6 @@ tests
 *.md
 Dockerfile
 docker-compose.yml
+
+# Dataset: kept on disk, mounted read-only by compose instead of copied into the image
+seed/docs/noisy_data

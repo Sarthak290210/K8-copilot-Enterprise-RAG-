@@ -1,0 +1,207 @@
+{
+  "profile": "naive",
+  "flags": {
+    "search_mode": "dense",
+    "top_k": 5,
+    "enable_rerank": false,
+    "enable_hyde": false,
+    "enable_crag": false,
+    "enable_self_reflective": false
+  },
+  "timestamp": "20261021T221133Z",
+  "git_commit": "ae5071f",
+  "questions_file": "golden_questions.yaml",
+  "filter": null,
+  "rows": [],
+  "skipped": [
+    {
+      "id": "q-001",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-002",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-003",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-004",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-005",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-006",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-007",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-008",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-009",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-010",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-011",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-012",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-039",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-013",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-014",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-015",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-016",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-038",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-017",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-018",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-019",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-020",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-021",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-022",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-023",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-024",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-025",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-026",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-027",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-028",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-037",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-029",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-030",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-031",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-032",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-033",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-034",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-035",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-036",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-040",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-041",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-042",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-043",
+      "reason": "RAG not implemented"
+    },
+    {
+      "id": "q-044",
+      "reason": "RAG not implemented"
+    }
+  ],
+  "errors": [],
+  "aggregate": {
+    "n_evaluated": 0,
+    "n_skipped": 44,
+    "n_errors": 0,
+    "faithfulness": null,
+    "context_precision": null,
+    "context_recall": null,
+    "answer_relevancy": null,
+    "source_overlap": null,
+    "forbidden_violations": 0,
+    "latency_ms": null
+  }
+}

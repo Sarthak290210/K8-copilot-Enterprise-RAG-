@@ -3,7 +3,7 @@ import time
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Request
-from groq import AsyncGroq
+from openai import AsyncOpenAI
 from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel
 from qdrant_client import AsyncQdrantClient
@@ -35,8 +35,8 @@ def get_redis(request: Request) -> Redis | None:
     return request.app.state.redis
 
 
-def get_groq(request: Request) -> AsyncGroq:
-    return request.app.state.groq
+def get_llm(request: Request) -> AsyncOpenAI:
+    return request.app.state.llm
 
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
@@ -80,15 +80,15 @@ async def ping_redis(client: Redis | None) -> ServiceStatus:
     return ServiceStatus(service="redis", status="up", latency_ms=latency_ms)
 
 
-async def ping_groq(client: AsyncGroq) -> ServiceStatus:
+async def ping_cerebras(client: AsyncOpenAI) -> ServiceStatus:
     # Listing models checks reachability + API key without spending tokens.
     start = time.perf_counter()
     try:
         await asyncio.wait_for(client.models.list(), timeout=PING_TIMEOUT_SECONDS)
     except Exception as exc:
-        return ServiceStatus(service="groq", status="down", error=type(exc).__name__)
+        return ServiceStatus(service="cerebras", status="down", error=type(exc).__name__)
     latency_ms = round((time.perf_counter() - start) * 1000, 2)
-    return ServiceStatus(service="groq", status="up", latency_ms=latency_ms)
+    return ServiceStatus(service="cerebras", status="up", latency_ms=latency_ms)
 
 
 @router.get("/health/postgres", response_model=ServiceStatus)
@@ -112,11 +112,11 @@ async def redis_health(
     return await ping_redis(client)
 
 
-@router.get("/health/groq", response_model=ServiceStatus)
-async def groq_health(
-    client: Annotated[AsyncGroq, Depends(get_groq)],
+@router.get("/health/cerebras", response_model=ServiceStatus)
+async def cerebras_health(
+    client: Annotated[AsyncOpenAI, Depends(get_llm)],
 ) -> ServiceStatus:
-    return await ping_groq(client)
+    return await ping_cerebras(client)
 
 
 @router.get("/health", response_model=HealthReport)
@@ -124,11 +124,11 @@ async def services_health(
     pool: Annotated[AsyncConnectionPool, Depends(get_pool)],
     qdrant: Annotated[AsyncQdrantClient, Depends(get_qdrant)],
     redis: Annotated[Redis | None, Depends(get_redis)],
-    groq: Annotated[AsyncGroq, Depends(get_groq)],
+    llm: Annotated[AsyncOpenAI, Depends(get_llm)],
 ) -> HealthReport:
     services = list(
         await asyncio.gather(
-            ping_postgres(pool), ping_qdrant(qdrant), ping_redis(redis), ping_groq(groq)
+            ping_postgres(pool), ping_qdrant(qdrant), ping_redis(redis), ping_cerebras(llm)
         )
     )
     overall = "ok" if all(s.status == "up" for s in services) else "degraded"

@@ -3,15 +3,14 @@ from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI
-from groq import AsyncGroq
 from loguru import logger
 from psycopg import AsyncConnection
 from psycopg_pool import AsyncConnectionPool
-from qdrant_client import AsyncQdrantClient
 
-from app.api import admin, auth
+from app.api import admin, auth, documents, query
 from app.config import settings
 from app.middleware.rate_limiter import get_redis_client
+from app.services import llm_service, vector_store
 
 
 def configure_logging() -> None:
@@ -36,20 +35,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await auth.ensure_users_table(pool)
         app.state.db_pool = pool
 
-        app.state.qdrant = AsyncQdrantClient(url=settings.qdrant_url, timeout=3)
+        # Shared with the services (vector_store / llm_service own the cached clients).
+        app.state.qdrant = vector_store.get_client()
         stack.push_async_callback(app.state.qdrant.close)
+        stack.callback(vector_store.get_client.cache_clear)
+        await vector_store.ensure_collection()
 
         app.state.redis = get_redis_client()
         if app.state.redis is not None:
             stack.push_async_callback(app.state.redis.close)
+            # Drop the closed client from the cache so a later startup (e.g. tests) gets a new one.
+            stack.callback(get_redis_client.cache_clear)
 
-        # AsyncGroq appends /openai/v1 itself, so strip it from the configured URL.
-        app.state.groq = AsyncGroq(
-            api_key=settings.groq_api_key.get_secret_value(),
-            base_url=settings.groq_base_url.removesuffix("/openai/v1"),
-            timeout=10,
-        )
-        stack.push_async_callback(app.state.groq.close)
+        app.state.llm = llm_service.get_client()  # Cerebras (OpenAI-compatible)
+        stack.push_async_callback(app.state.llm.close)
+        stack.callback(llm_service.get_client.cache_clear)
 
         try:
             yield
@@ -66,6 +66,13 @@ app = FastAPI(
 
 app.include_router(auth.router)
 app.include_router(admin.router)
+app.include_router(query.router)
+app.include_router(documents.router)
+
+
+@app.get("/", tags=["health"])
+async def root() -> dict[str, str]:
+    return {"name": "k8-copilot", "status": "ok"}
 
 
 @app.get("/health", tags=["health"])

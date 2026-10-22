@@ -22,7 +22,9 @@ COPY seed ./seed
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
-RUN useradd --create-home --uid 1000 appuser
+# Pre-create the model cache owned by appuser: Docker copies this ownership into the
+# hf_cache volume, otherwise the volume is root-owned and model downloads fail.
+RUN useradd --create-home --uid 1000 appuser     && mkdir -p /home/appuser/.cache/huggingface     && chown -R appuser:appuser /home/appuser/.cache
 USER appuser
 
 EXPOSE 8000

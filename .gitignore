@@ -11,3 +11,13 @@ wheels/
 
 # Secrets
 .env
+
+# Dataset: 801 MB of third-party PDFs. Kept on disk, never pushed to the public repo.
+seed/docs/noisy_data/*
+!seed/docs/noisy_data/.gitkeep
+
+# Local storage backend (Phase 5 doc dedup cache)
+cache/
+
+# eval run checkpoints (resume state, deleted when a run completes)
+eval/results/checkpoints/
