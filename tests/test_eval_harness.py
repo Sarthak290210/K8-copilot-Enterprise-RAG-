@@ -372,3 +372,11 @@ def test_clean_turns_nan_into_none():
     assert ragas_adapter._clean(float("nan")) is None
     assert ragas_adapter._clean(None) is None
     assert ragas_adapter._clean(0.123456) == 0.1235
+
+
+def test_relevancy_strictness_comes_from_settings(monkeypatch):
+    monkeypatch.setattr(ragas_adapter.settings, "eval_relevancy_strictness", 1)
+    faith, relevancy = ragas_adapter._metrics()
+    assert relevancy.strictness == 1
+    assert ragas_adapter.answer_relevancy.strictness == 3  # Ragas' shared instance untouched
+    assert relevancy.name == "answer_relevancy"

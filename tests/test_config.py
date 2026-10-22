@@ -33,4 +33,5 @@ def test_defaults_match_plan():
     assert s.cerebras_base_url == "https://api.cerebras.ai/v1"
     assert s.embedding_model == "BAAI/bge-base-en-v1.5"
     assert s.embedding_dim == 768
+    assert s.reranker_max_length == 256
     assert (s.rate_limit_requests, s.rate_limit_window_seconds) == (20, 60)

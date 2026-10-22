@@ -9,6 +9,7 @@ Reference answers: the goldens only have keywords, so the reference is built fro
 """
 
 import asyncio
+import copy
 import math
 import warnings
 from functools import cached_property
@@ -34,6 +35,17 @@ with warnings.catch_warnings():
 
 METRICS = [faithfulness, answer_relevancy]
 METRIC_NAMES = [m.name for m in METRICS]
+
+
+def _metrics() -> list[Any]:
+    """The metric objects for a run, with answer_relevancy's strictness from settings.
+
+    A copy, so Ragas' shared module-level instance is never changed.
+    """
+    relevancy = copy.copy(answer_relevancy)
+    relevancy.strictness = settings.eval_relevancy_strictness
+    return [faithfulness, relevancy]
+
 
 # Cerebras free trial: 5 requests/minute and 1M tokens/day per model. Few parallel judge
 # calls plus patient retries keeps a run inside that instead of failing with 429s.
@@ -137,7 +149,7 @@ def run(
         return []
     result = evaluate(
         build_dataset(rows),
-        metrics=METRICS,
+        metrics=_metrics(),
         llm=_get_ragas_llm(judge_model),
         embeddings=_get_ragas_embeddings(),
         raise_exceptions=False,  # one bad judgement shouldn't kill the whole run

@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # Ragas judge for faithfulness / answer_relevancy: a different model family from the answer
     # model (no self-grading bias) with its own daily token budget.
     eval_judge_model: str = "qwen-3.8-27b"
+    # How many questions answer_relevancy asks the judge to reverse-engineer from each answer
+    # (Ragas default 3). 1 saves ~15-20% of judge tokens; used from E3 on (E1/E2 ran with 3).
+    eval_relevancy_strictness: int = 3
     # gpt-oss reasoning depth: more = slower and more tokens.
     llm_reasoning_effort: Literal["low", "medium", "high"] = "low"
     embedding_provider: Literal["sentence-transformers"] = "sentence-transformers"
@@ -88,6 +91,9 @@ class Settings(BaseSettings):
     rrf_k: int = 60
     reranker_backend: Literal["local", "voyage"] = "local"
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    # Tokens of (question + chunk) the local cross-encoder reads. 256 (user's choice,
+    # 2026-10-22): ~1.2 s per 20-chunk rerank on this CPU vs ~3.6 s at the model's full 512.
+    reranker_max_length: int = 256
     voyage_api_key: SecretStr | None = None
     voyage_model: str = "rerank-2.5"
     reranker_initial_top_k: int = 20

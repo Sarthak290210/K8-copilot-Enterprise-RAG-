@@ -271,6 +271,7 @@ def main() -> None:
         "questions_file": args.questions.name,
         "filter": args.feature,
         "judge_model": judge_model,
+        "answer_relevancy_strictness": settings.eval_relevancy_strictness,
         "rows": rows,
         "skipped": skipped,
         "errors": errors,

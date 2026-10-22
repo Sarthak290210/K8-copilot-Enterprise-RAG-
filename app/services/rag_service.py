@@ -1,5 +1,6 @@
 """The RAG pipeline: retrieve -> build prompt -> answer with sources."""
 
+import asyncio
 import time
 from typing import Any
 
@@ -7,12 +8,13 @@ from app.config import settings
 from app.models import ChatResponse, ResponseMetadata, RetrievedChunk, RetrievedChunkPreview
 from app.security.system_prompt import build_system_prompt
 from app.services import embedding_service, llm_service, vector_store
+from app.services.reranking import get_reranker
 
 NOT_FOUND_ANSWER = "I couldn't find this in the knowledge base."
 
-# Defaults when a flag isn't given. Phase 1 has dense search only.
-DEFAULT_FLAGS: dict[str, Any] = {"search_mode": "dense", "top_k": 5}
-SUPPORTED_SEARCH_MODES = {"dense"}  # sparse/hybrid arrive in Phase 2
+# Defaults when a flag isn't given: the `naive` profile (E1 baseline) = exactly these.
+DEFAULT_FLAGS: dict[str, Any] = {"search_mode": "dense", "top_k": 5, "enable_rerank": False}
+SUPPORTED_SEARCH_MODES = {"dense", "sparse", "hybrid"}
 
 
 def _flag(flags: dict[str, Any] | None, key: str, default: Any = None) -> Any:
@@ -23,12 +25,35 @@ def _flag(flags: dict[str, Any] | None, key: str, default: Any = None) -> Any:
 
 
 async def _retrieve(question: str, flags: dict[str, Any] | None) -> list[RetrievedChunk]:
+    """dense | sparse | hybrid search; with `enable_rerank`, two-stage retrieval.
+
+    Without rerank, `top_k` chunks are fetched directly, so dense without rerank is exactly
+    the Phase 1 path that E1 measured. With rerank, `reranker_initial_top_k` (20) candidates
+    are fetched and the cross-encoder keeps the best `top_k`.
+    """
     search_mode = _flag(flags, "search_mode")
     if search_mode not in SUPPORTED_SEARCH_MODES:
-        raise ValueError(f"search_mode '{search_mode}' is not available yet (Phase 1: dense only)")
+        raise ValueError(
+            f"Unknown search_mode '{search_mode}'. Use one of: "
+            + ", ".join(sorted(SUPPORTED_SEARCH_MODES))
+        )
     top_k = int(_flag(flags, "top_k"))
-    query_vector = await embedding_service.embed_query(question)
-    return await vector_store.search(query_vector, top_k=top_k)
+    rerank = bool(_flag(flags, "enable_rerank"))
+    fetch_k = max(top_k, settings.reranker_initial_top_k) if rerank else top_k
+
+    if search_mode == "sparse":
+        chunks = await vector_store.sparse_search(question, top_k=fetch_k)
+    else:
+        query_vector = await embedding_service.embed_query(question)
+        if search_mode == "hybrid":
+            chunks = await vector_store.hybrid_search(question, query_vector, top_k=fetch_k)
+        else:
+            chunks = await vector_store.search(query_vector, top_k=fetch_k)
+
+    if rerank:
+        # The cross-encoder is CPU-bound: keep it off the event loop.
+        chunks = await asyncio.to_thread(get_reranker().rerank, question, chunks, top_k)
+    return chunks
 
 
 def _build_context(chunks: list[RetrievedChunk]) -> str:

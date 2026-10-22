@@ -1,5 +1,7 @@
-"""Read and write vectors in Qdrant."""
+"""Read and write vectors in Qdrant, plus BM25 keyword search and hybrid (dense + BM25) search."""
 
+import asyncio
+import time
 import uuid
 from functools import lru_cache
 from typing import Any
@@ -9,8 +11,16 @@ from qdrant_client import AsyncQdrantClient, models
 
 from app.config import settings
 from app.models import RetrievedChunk
+from app.services.sparse_vector_service import SparseVectorIndex, fuse_rrf
 
 UPSERT_BATCH_SIZE = 256
+SCROLL_PAGE_SIZE = 1_000
+
+# BM25 index over every chunk: built on first use, reused by every query, and dropped when
+# documents change in this process. (A separate process, e.g. the seed script, can't reach it:
+# restart the API after a bulk ingest.)
+_sparse_index: SparseVectorIndex | None = None
+_sparse_lock = asyncio.Lock()
 # Fixed namespace: the same (source, chunk_index) always maps to the same point ID.
 POINT_ID_NAMESPACE = uuid.UUID("6f1c2d5e-8b0a-4f43-9c7e-2a5d1b3e4f60")
 
@@ -69,6 +79,7 @@ async def upsert_chunks(
         await client.upsert(
             settings.qdrant_collection, points=points[start : start + UPSERT_BATCH_SIZE], wait=True
         )
+    invalidate_sparse_index()
     return len(points)
 
 
@@ -84,6 +95,7 @@ async def delete_source(source: str, client: AsyncQdrantClient | None = None) ->
         ),
         wait=True,
     )
+    invalidate_sparse_index()
 
 
 async def search(
@@ -103,6 +115,79 @@ async def search(
         )
         for point in result.points
     ]
+
+
+async def _scroll_all_payloads(client: AsyncQdrantClient) -> list[dict[str, Any]]:
+    """Every point's payload, page by page (no cap), without the vectors."""
+    payloads: list[dict[str, Any]] = []
+    offset = None
+    while True:
+        points, offset = await client.scroll(
+            settings.qdrant_collection,
+            limit=SCROLL_PAGE_SIZE,
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+        )
+        payloads.extend(
+            {
+                "text": (p.payload or {}).get("text", ""),
+                "source": (p.payload or {}).get("source", "unknown"),
+                "metadata": (p.payload or {}).get("metadata", {}),
+            }
+            for p in points
+        )
+        if offset is None:
+            return payloads
+
+
+async def _build_sparse_index(client: AsyncQdrantClient | None = None) -> SparseVectorIndex:
+    """The cached BM25 index, built from all chunks on first use (one build at a time)."""
+    global _sparse_index
+    if _sparse_index is not None:
+        return _sparse_index
+    async with _sparse_lock:
+        if _sparse_index is None:  # another request may have built it while we waited
+            start = time.perf_counter()
+            payloads = await _scroll_all_payloads(client or get_client())
+            index = SparseVectorIndex()
+            await asyncio.to_thread(index.fit, payloads)  # tokenising ~7k chunks is CPU work
+            _sparse_index = index
+            logger.info(
+                "Built BM25 index over {} chunks in {:.1f}s",
+                len(index),
+                time.perf_counter() - start,
+            )
+    return _sparse_index
+
+
+def invalidate_sparse_index() -> None:
+    """Drop the BM25 index; the next sparse search rebuilds it with the current chunks."""
+    global _sparse_index
+    _sparse_index = None
+
+
+async def sparse_search(
+    query_text: str, top_k: int = 20, client: AsyncQdrantClient | None = None
+) -> list[RetrievedChunk]:
+    """BM25 keyword search over all chunks, best first."""
+    index = await _build_sparse_index(client)
+    return await asyncio.to_thread(index.search, query_text, top_k)
+
+
+async def hybrid_search(
+    query_text: str,
+    query_embedding: list[float],
+    top_k: int = 20,
+    client: AsyncQdrantClient | None = None,
+) -> list[RetrievedChunk]:
+    """Dense and BM25 candidates (each `reranker_initial_top_k` deep), merged with RRF."""
+    depth = max(top_k, settings.reranker_initial_top_k)
+    dense, sparse = await asyncio.gather(
+        search(query_embedding, top_k=depth, client=client),
+        sparse_search(query_text, top_k=depth, client=client),
+    )
+    return fuse_rrf(dense, sparse, k=settings.rrf_k, top_k=top_k)
 
 
 async def list_sources(client: AsyncQdrantClient | None = None, limit: int = 10_000) -> list[str]:

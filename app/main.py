@@ -40,6 +40,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         stack.push_async_callback(app.state.qdrant.close)
         stack.callback(vector_store.get_client.cache_clear)
         await vector_store.ensure_collection()
+        try:
+            # Build the BM25 index now, so the first sparse/hybrid query doesn't pay for it.
+            await vector_store.sparse_search("warm up", top_k=1)
+        except Exception as exc:
+            # Not fatal: the index builds on the first sparse/hybrid query instead.
+            logger.warning("Could not warm the BM25 index ({})", type(exc).__name__)
+        stack.callback(vector_store.invalidate_sparse_index)
 
         app.state.redis = get_redis_client()
         if app.state.redis is not None:

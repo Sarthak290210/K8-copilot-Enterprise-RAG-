@@ -24,7 +24,7 @@ FEATURE_PHASE = {
     "enable_self_reflective": 3,
 }
 SEARCH_MODES = {"dense": 1, "sparse": 2, "hybrid": 2}
-CURRENT_PHASE = 1
+CURRENT_PHASE = 2
 
 
 # ---------------- HTTP helpers ----------------
