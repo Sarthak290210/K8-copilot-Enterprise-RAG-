@@ -8,8 +8,16 @@ from ragas.dataset_schema import SingleTurnSample
 from app.models import ChatResponse, CRAGEvaluation, ResponseMetadata, RetrievedChunk
 from eval import ragas_adapter, record
 from eval.diff import diff_results, row_passed
-from eval.invokers import ServiceInvoker, SkippedIntent
-from eval.post_checks import _norm, forbidden_keywords_check, id_context_scores, source_overlap
+from eval.invokers import AgentInvoker, ServiceInvoker, SkippedIntent
+from eval.post_checks import (
+    _norm,
+    expected_intent,
+    forbidden_keywords_check,
+    id_context_scores,
+    intent_match,
+    source_overlap,
+    sql_keyword_match,
+)
 from eval.profiles import PROFILES, get_profile
 from eval.reporting import aggregate
 from eval.run_ragas import (
@@ -53,6 +61,7 @@ def test_profiles_cover_plan():
         "hybrid+rerank",
         "hybrid+hyde",
         "hybrid+crag",
+        "defaults",
         "all",
     }
     assert get_profile("naive") == {
@@ -83,8 +92,8 @@ def test_unknown_profile():
 
 
 @pytest.mark.parametrize("intent", ["sql", "hybrid"])
-async def test_service_invoker_skips_sql_and_hybrid_until_phase_4(intent):
-    with pytest.raises(SkippedIntent, match="Phase 4"):
+async def test_rag_only_invoker_skips_sql_and_hybrid(intent):
+    with pytest.raises(SkippedIntent, match="AgentInvoker"):
         await ServiceInvoker().invoke("How many pods?", get_profile("naive"), intent)
 
 
@@ -425,3 +434,81 @@ def test_pipeline_settings_change_the_checkpoint_key(monkeypatch, tmp_path):
     assert {"grader_model", "crag_relevance_threshold", "reflection_min_score"} <= set(
         pipeline_settings()
     )
+
+
+# ---- Phase 4: agent invoker, intent + SQL checks ----
+
+
+def test_defaults_profile_is_hybrid_plus_crag():
+    flags = get_profile("defaults")
+    assert flags["search_mode"] == "hybrid" and flags["enable_crag"]
+    assert not any(flags[k] for k in ("enable_rerank", "enable_hyde", "enable_self_reflective"))
+
+
+async def test_agent_invoker_auto_approves_sql(monkeypatch):
+    from app.core import graph as agent
+    from app.core.graph import AgentResult
+    from app.models import PendingSQLBlock
+
+    calls = []
+
+    async def run_agent(graph, question, flags, query_id, user_id=None):
+        calls.append("run")
+        pending = PendingSQLBlock(query_id=query_id, sql="SELECT 1")
+        return AgentResult(ChatResponse(answer="review", pending_sql=pending))
+
+    async def resume_agent(graph, query_id, approved, edited_sql=None):
+        calls.append(("resume", approved))
+        return AgentResult(ChatResponse(answer="392"), [])
+
+    monkeypatch.setattr(agent, "run_agent", run_agent)
+    monkeypatch.setattr(agent, "resume_agent", resume_agent)
+    response, chunks = await AgentInvoker().invoke("How many P1?", {}, "sql")
+    assert response.answer == "392" and calls == ["run", ("resume", True)]
+
+
+@pytest.mark.parametrize(
+    ("golden", "expected"),
+    [("sql", "sql"), ("hybrid", "hybrid"), ("rag", "rag"), ("web_fallback", "rag")],
+)
+def test_expected_intent(golden, expected):
+    assert expected_intent(golden) == expected
+    assert intent_match(golden, expected) and not intent_match(golden, "other")
+
+
+def test_sql_keyword_match():
+    kw = ["P1", "incident", "MTTR"]
+    sql = "SELECT count(*), avg(mttr_minutes) FROM incidents WHERE severity = 'P1'"
+    assert sql_keyword_match("sql", kw, "There were 392.", sql) == 1.0
+    assert sql_keyword_match("sql", kw, "nothing", None) == 0.0
+    assert sql_keyword_match("rag", kw, "P1 incident MTTR", sql) is None
+    assert sql_keyword_match("hybrid", [], "x", sql) is None
+
+
+def test_aggregate_reports_intent_accuracy_and_sql_keywords():
+    rows = [make_row("a", 0.8, 1.0), make_row("b", 0.8, 1.0), make_row("c", 0.8, 1.0)]
+    rows[0].update(intent_match=True, sql_keyword_match=1.0)
+    rows[1].update(intent_match=False, sql_keyword_match=0.5)
+    rows[2].update(intent_match=True, sql_keyword_match=None)
+    summary = aggregate(rows, [], [])
+    assert summary["intent_accuracy"] == 0.667 and summary["sql_keyword_match_rate"] == 0.75
+    assert aggregate([make_row("a", 0.8, 1.0)], [], [])["intent_accuracy"] is None  # old files
+
+
+async def test_collect_rows_records_intent_and_sql():
+    golden = next(g for g in load_goldens() if g.intent == "sql")
+    sql_chunk = RetrievedChunk(text="n | 392", source="query_results", score=1.0)
+
+    class FakeInvoker:
+        async def invoke(self, question, flags, intent):
+            meta = ResponseMetadata(
+                intent="sql", generated_sql="SELECT count(*) FROM incidents", sql_row_count=1
+            )
+            return ChatResponse(answer="392 P1 incidents", metadata=meta), [sql_chunk]
+
+    rows, _, _ = await collect_rows([golden], {}, FakeInvoker())  # type: ignore[arg-type]
+    row = rows[0]
+    assert row["predicted_intent"] == "sql" and row["intent_match"] is True
+    assert row["generated_sql"].startswith("SELECT") and row["sql_rows_count"] == 1
+    assert row["context_sources"] == ["query_results"]  # = the sql goldens' source marker
+    assert row["source_overlap"]["overlap"] == 1.0

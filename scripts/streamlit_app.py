@@ -24,7 +24,7 @@ FEATURE_PHASE = {
     "enable_self_reflective": 3,
 }
 SEARCH_MODES = {"dense": 1, "sparse": 2, "hybrid": 2}
-CURRENT_PHASE = 3
+CURRENT_PHASE = 4
 # The UI sends every flag, so its toggles start at the API's defaults (GET /query/defaults,
 # from the *_ENABLED_BY_DEFAULT settings). Used only if the API can't be reached.
 FALLBACK_DEFAULTS: dict[str, Any] = {"search_mode": "hybrid", "top_k": 5, "enable_crag": True}
@@ -121,6 +121,9 @@ def _render_answer_card(payload: dict[str, Any]) -> None:
     st.markdown(payload.get("answer", ""))
     if payload.get("confidence") is not None:
         st.caption(f"Confidence: {payload['confidence']:.2f}")
+    if meta.get("generated_sql"):
+        with st.expander(f"SQL that ran ({meta.get('sql_row_count', 0)} rows)"):
+            st.code(meta["generated_sql"], language="sql")
     if payload.get("sources"):
         st.markdown("**Sources:** " + ", ".join(f"`{s}`" for s in payload["sources"]))
     chunks = payload.get("chunks") or []
@@ -228,10 +231,62 @@ def _upload_section() -> None:
             st.write(sources)
 
 
+def _remember(question: str, flags: dict[str, Any], payload: dict[str, Any]) -> None:
+    history = st.session_state.setdefault("history", [])
+    history.insert(0, {"question": question, "flags": flags, "payload": payload})
+    del history[HISTORY_SIZE:]
+
+
+def _render_pending_sql_card(pending: dict[str, Any]) -> None:
+    """Phase 4: the agent paused before running SQL. Show it (editable) with Approve/Reject."""
+    st.info(f"**{pending.get('intent', 'sql')} question**: review the SQL before it runs.")
+    if pending.get("explanation"):
+        st.caption(pending["explanation"])
+    st.text_area(
+        "SQL (you can edit it; edits are re-checked)", pending["sql"], key="pending_sql_text"
+    )
+    approve, reject = st.columns(2)
+    if approve.button("Approve and run", type="primary"):
+        _sql_approval_section(pending, approved=True)
+    if reject.button("Reject"):
+        _sql_approval_section(pending, approved=False)
+
+
+def _sql_approval_section(pending: dict[str, Any], approved: bool) -> None:
+    """Send the decision to /query/sql/execute and show the final answer."""
+    edited = st.session_state.get("pending_sql_text", pending["sql"])
+    body = {
+        "query_id": pending["query_id"],
+        "approved": approved,
+        "edited_sql": edited if approved and edited.strip() != pending["sql"].strip() else None,
+    }
+    with st.spinner("Running the query and answering…" if approved else "Cancelling…"):
+        resp = _request("POST", "/query/sql/execute", json=body)
+    if resp is None:
+        return
+    payload = _safe_json(resp)
+    if resp.status_code != 200:
+        st.error(str(payload.get("detail", resp.status_code)))
+        return
+    st.session_state.pop("pending", None)
+    _render_answer_card(payload)
+    _remember(pending.get("question", ""), {}, payload)
+
+
+def _render_response_card(question: str, flags: dict[str, Any], payload: dict[str, Any]) -> None:
+    """An answer, or (Phase 4) a pending SQL block waiting for approval."""
+    if payload.get("pending_sql"):
+        st.session_state["pending"] = {**payload["pending_sql"], "question": question}
+        return
+    _render_answer_card(payload)
+    _remember(question, flags, payload)
+
+
 def _query_section(flags: dict[str, Any]) -> None:
     question = st.text_area("Ask a Kubernetes question", placeholder="What is a Pod?")
     if st.button("Ask", type="primary") and question.strip():
-        with st.spinner("Retrieving and answering…"):
+        st.session_state.pop("pending", None)
+        with st.spinner("Routing, retrieving and answering…"):
             resp = _request("POST", "/query", json={"question": question, "flags": flags})
         if resp is None:
             return
@@ -239,10 +294,10 @@ def _query_section(flags: dict[str, Any]) -> None:
         if resp.status_code != 200:
             st.error(str(payload.get("detail", resp.status_code)))
             return
-        _render_answer_card(payload)
-        history = st.session_state.setdefault("history", [])
-        history.insert(0, {"question": question, "flags": flags, "payload": payload})
-        del history[HISTORY_SIZE:]
+        _render_response_card(question, flags, payload)
+    # A paused query stays on screen across reruns until it's approved or rejected.
+    if st.session_state.get("pending"):
+        _render_pending_sql_card(st.session_state["pending"])
 
 
 def _history_section() -> None:

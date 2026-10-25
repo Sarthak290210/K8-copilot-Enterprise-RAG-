@@ -8,7 +8,8 @@ Run from the repo root with `make seed` (or `uv run python scripts/seed_db.py`):
     --skip-existing         don't re-ingest documents already in Qdrant (resume a long run)
 
 Safe to re-run: 001 uses CREATE TABLE IF NOT EXISTS, 002 drops and recreates its own
-tables, 003 re-grants the read-only role, existing users are left untouched, and documents
+tables, 003 re-grants the read-only role (and LOGIN is set from COPILOT_RO_PASSWORD), 004
+adds query_threads if missing, existing users are left untouched, and documents
 are upserted with deterministic IDs (re-ingesting overwrites, never duplicates).
 """
 
@@ -21,6 +22,7 @@ from typing import LiteralString, cast
 
 import psycopg
 from loguru import logger
+from psycopg import sql
 from pydantic import SecretStr
 
 from app.config import settings
@@ -56,6 +58,24 @@ def run_migrations(conn: psycopg.Connection) -> None:
         with conn.transaction():
             conn.execute(sql)
     logger.info("Ran {} migration(s)", len(files))
+
+
+def enable_readonly_login(conn: psycopg.Connection) -> None:
+    """Give the read-only Text2SQL role (003) LOGIN with COPILOT_RO_PASSWORD from .env.
+
+    The password can't live in a committed .sql file, so it's set here; psycopg's sql.Literal
+    quotes it safely (DDL can't take %s parameters). Skipped with a warning if it isn't set.
+    """
+    password = settings.copilot_ro_password
+    if password is None:
+        logger.warning("COPILOT_RO_PASSWORD is not set: copilot_ro stays NOLOGIN (no Text2SQL)")
+        return
+    conn.execute(
+        sql.SQL("ALTER ROLE copilot_ro WITH LOGIN PASSWORD {}").format(
+            sql.Literal(password.get_secret_value())
+        )
+    )
+    logger.info("copilot_ro can log in (read-only, ops tables only)")
 
 
 def seed_users(conn: psycopg.Connection) -> None:
@@ -210,6 +230,7 @@ def main() -> None:
     if not args.docs_only:
         with psycopg.connect(DATABASE_URL, autocommit=True, connect_timeout=10) as conn:
             run_migrations(conn)
+            enable_readonly_login(conn)
             seed_users(conn)
             logger.info("Database seeded:")
             print_summary(conn)
