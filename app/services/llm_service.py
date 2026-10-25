@@ -1,6 +1,8 @@
 """The only place that talks to the chat LLM API (Cerebras, OpenAI-compatible)."""
 
+import asyncio
 import json
+import time
 from functools import lru_cache
 from typing import Any
 
@@ -31,6 +33,33 @@ def is_reasoning_model(model: str) -> bool:
     return "gpt-oss" in model
 
 
+_pace_lock: asyncio.Lock | None = None
+_pace_loop: asyncio.AbstractEventLoop | None = None
+_last_call_at = 0.0
+
+
+async def _pace() -> None:
+    """Space calls at least `llm_min_interval_seconds` apart (no-op when it's 0).
+
+    Rate limits are per account, so pacing is process-wide; the lock makes concurrent callers
+    queue instead of all firing at once.
+    """
+    global _pace_lock, _pace_loop, _last_call_at
+    interval = settings.llm_min_interval_seconds
+    if interval <= 0:
+        return
+    loop = asyncio.get_running_loop()
+    if _pace_lock is None or _pace_loop is not loop:
+        # An asyncio.Lock belongs to one event loop: a new loop (another asyncio.run, a test)
+        # gets a new lock instead of 'bound to a different event loop'.
+        _pace_lock, _pace_loop = asyncio.Lock(), loop
+    async with _pace_lock:
+        wait = _last_call_at + interval - time.monotonic()
+        if wait > 0:
+            await asyncio.sleep(wait)
+        _last_call_at = time.monotonic()
+
+
 async def generate(
     system_prompt: str,
     user_message: str,
@@ -49,6 +78,7 @@ async def generate(
         extra["reasoning_effort"] = settings.llm_reasoning_effort
     if json_mode:
         extra["response_format"] = {"type": "json_object"}
+    await _pace()
     response = await get_client().chat.completions.create(
         model=model,
         temperature=temperature,
@@ -71,7 +101,20 @@ async def generate(
 
 
 class LLMJSONError(ValueError):
-    """The model was asked for JSON but returned something else."""
+    """The model was asked for JSON but returned something else.
+
+    `usage` holds the tokens the failed call still spent, so callers can count them.
+    """
+
+    def __init__(self, message: str, usage: dict[str, int] | None = None) -> None:
+        super().__init__(message)
+        self.usage = usage or {}
+
+
+def tokens_spent(exc: BaseException) -> int:
+    """Tokens a failed call still used: an LLMJSONError's usage, otherwise 0 (the call never
+    returned, e.g. a network error or a rate limit the SDK gave up on)."""
+    return exc.usage.get("total_tokens", 0) if isinstance(exc, LLMJSONError) else 0
 
 
 async def generate_with_json(
@@ -86,7 +129,7 @@ async def generate_with_json(
         data = json.loads(result["content"])
     except json.JSONDecodeError as exc:
         logger.warning("LLM returned invalid JSON ({} chars)", len(result["content"]))
-        raise LLMJSONError(f"Model returned invalid JSON: {exc}") from exc
+        raise LLMJSONError(f"Model returned invalid JSON: {exc}", result["usage"]) from exc
     if not isinstance(data, dict):
-        raise LLMJSONError("Model returned JSON that is not an object")
+        raise LLMJSONError("Model returned JSON that is not an object", result["usage"])
     return {"data": data, "model": result["model"], "usage": result["usage"]}

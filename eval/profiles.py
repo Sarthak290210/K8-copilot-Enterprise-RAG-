@@ -18,14 +18,13 @@ PROFILES: dict[str, Flags] = {
     "sparse_only": _BASE | {"search_mode": "sparse"},
     "hybrid": _BASE | {"search_mode": "hybrid"},
     "hybrid+rerank": _BASE | {"search_mode": "hybrid", "enable_rerank": True},
-    "hybrid+rerank+hyde": _BASE
-    | {"search_mode": "hybrid", "enable_rerank": True, "enable_hyde": True},
-    "hybrid+rerank+crag": _BASE
-    | {"search_mode": "hybrid", "enable_rerank": True, "enable_crag": True},
+    # Phase 3 builds on `hybrid`, not `hybrid+rerank`: E2 showed reranking hurts on this
+    # corpus (user's choice, 2026-10-23; plan.md's names had +rerank).
+    "hybrid+hyde": _BASE | {"search_mode": "hybrid", "enable_hyde": True},
+    "hybrid+crag": _BASE | {"search_mode": "hybrid", "enable_crag": True},
     "all": _BASE
     | {
         "search_mode": "hybrid",
-        "enable_rerank": True,
         "enable_hyde": True,
         "enable_crag": True,
         "enable_self_reflective": True,

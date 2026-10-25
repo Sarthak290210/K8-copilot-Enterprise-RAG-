@@ -10,7 +10,7 @@ from psycopg_pool import AsyncConnectionPool
 from app.api import admin, auth, documents, query
 from app.config import settings
 from app.middleware.rate_limiter import get_redis_client
-from app.services import llm_service, vector_store
+from app.services import llm_service, vector_store, web_search
 
 
 def configure_logging() -> None:
@@ -57,6 +57,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         app.state.llm = llm_service.get_client()  # Cerebras (OpenAI-compatible)
         stack.push_async_callback(app.state.llm.close)
         stack.callback(llm_service.get_client.cache_clear)
+
+        app.state.tavily = web_search.get_client()  # None without TAVILY_API_KEY
+        if app.state.tavily is not None:
+            stack.push_async_callback(app.state.tavily.close)
+        stack.callback(web_search.get_client.cache_clear)
 
         try:
             yield

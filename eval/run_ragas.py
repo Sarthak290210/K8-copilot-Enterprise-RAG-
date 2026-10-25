@@ -22,6 +22,7 @@ from typing import Any
 from loguru import logger
 
 from app.config import settings
+from app.services.web_search import is_web_chunk
 from eval.invokers import Invoker, ServiceInvoker, SkippedIntent
 from eval.post_checks import (
     ID_METRICS,
@@ -35,6 +36,7 @@ from eval.schema import DEFAULT_GOLDENS_PATH, Golden, load_goldens
 
 RESULTS_DIR = Path(__file__).resolve().parent / "results"
 CHECKPOINT_DIR = RESULTS_DIR / "checkpoints"
+WEB_SOURCE = "tavily_web"  # golden_sources marker for "answered from the web"
 
 
 class JudgeQuotaExhausted(RuntimeError):
@@ -113,6 +115,8 @@ async def collect_rows(
             logger.exception("Question {} failed", golden.id)
             errors.append({"id": golden.id, "error": f"{type(exc).__name__}: {exc}"})
             continue
+        # Web results (CRAG) count as the golden source "tavily_web", whatever their URL.
+        eval_sources = [WEB_SOURCE if is_web_chunk(c) else c.source for c in chunks]
         rows.append(
             {
                 "id": golden.id,
@@ -124,10 +128,17 @@ async def collect_rows(
                 "answer": response.answer,
                 "sources": list(response.sources),
                 "contexts": [chunk.text for chunk in chunks],
-                "context_sources": [chunk.source for chunk in chunks],  # in rank order
+                "context_sources": eval_sources,  # in rank order
                 "latency_ms": round((time.perf_counter() - start) * 1000, 1),
                 "forbidden": forbidden_keywords_check(response.answer, golden.forbidden_keywords),
-                "source_overlap": source_overlap(list(response.sources), golden.golden_sources),
+                "source_overlap": source_overlap(eval_sources, golden.golden_sources),
+                # Phase 3 trace: cost and what the advanced features did.
+                "tokens_used": response.metadata.tokens_used,
+                "confidence": response.confidence,
+                "crag_action": response.metadata.crag.action if response.metadata.crag else None,
+                "reflection_iterations": response.metadata.reflection_iterations,
+                "hyde_hypotheses": response.metadata.hyde_hypotheses,
+                "refined_question": response.metadata.refined_question,
             }
         )
         if on_row is not None:
@@ -142,15 +153,40 @@ async def _collect_and_close(
     on_row: Callable[[list[dict[str, Any]]], None],
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     """Ask all goldens in one event loop, then close the shared clients (they're loop-bound)."""
-    from app.services import llm_service, vector_store
+    from app.services import llm_service, vector_store, web_search
 
     try:
         return await collect_rows(goldens, flags, ServiceInvoker(), done, on_row)
     finally:
         await llm_service.get_client().close()
         await vector_store.get_client().close()
+        tavily = web_search.get_client()
+        if tavily is not None:
+            await tavily.close()
         llm_service.get_client.cache_clear()
         vector_store.get_client.cache_clear()
+        web_search.get_client.cache_clear()
+
+
+def pipeline_settings() -> dict[str, Any]:
+    """Settings that change the answers (beyond the profile flags and the answer model).
+
+    Part of the checkpoint key, so resuming after one of them changed starts the answers over
+    instead of mixing two configurations in one result file; also recorded in the result.
+    """
+    return {
+        "grader_model": settings.llm_model_grader,
+        "reasoning_effort": settings.llm_reasoning_effort,
+        "rrf_k": settings.rrf_k,
+        "reranker_model": settings.reranker_model,
+        "reranker_max_length": settings.reranker_max_length,
+        "reranker_initial_top_k": settings.reranker_initial_top_k,
+        "hyde_num_hypotheses": settings.hyde_num_hypotheses,
+        "crag_relevance_threshold": settings.crag_relevance_threshold,
+        "crag_ambiguous_threshold": settings.crag_ambiguous_threshold,
+        "reflection_min_score": settings.reflection_min_score,
+        "max_reflection_retries": settings.max_reflection_retries,
+    }
 
 
 def needs_scoring(row: dict[str, Any], judge_model: str) -> bool:
@@ -228,6 +264,7 @@ def main() -> None:
         "questions_file": args.questions.name,
         "filter": args.feature,
         "answer_model": settings.llm_model_answer,
+        "pipeline": pipeline_settings(),
     }
     ckpt = checkpoint_path(args.profile, args.feature)
     done = {} if args.fresh else load_checkpoint(ckpt, key)
@@ -272,6 +309,8 @@ def main() -> None:
         "filter": args.feature,
         "judge_model": judge_model,
         "answer_relevancy_strictness": settings.eval_relevancy_strictness,
+        "answer_model": settings.llm_model_answer,
+        "pipeline": pipeline_settings(),
         "rows": rows,
         "skipped": skipped,
         "errors": errors,

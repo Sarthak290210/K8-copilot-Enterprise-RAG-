@@ -1,0 +1,481 @@
+{
+  "profile": "hybrid+crag",
+  "flags": {
+    "search_mode": "hybrid",
+    "top_k": 5,
+    "enable_rerank": false,
+    "enable_hyde": false,
+    "enable_crag": true,
+    "enable_self_reflective": false
+  },
+  "timestamp": "20261022T204900Z",
+  "git_commit": "cc13a43",
+  "questions_file": "golden_questions.yaml",
+  "filter": "crag",
+  "judge_model": "qwen-3.8-27b",
+  "answer_relevancy_strictness": 1,
+  "rows": [
+    {
+      "id": "q-001",
+      "question": "What is a Pod in Kubernetes?",
+      "intent": "rag",
+      "demonstrates_feature": "baseline",
+      "golden_sources": [
+        "concepts__workloads__pods.html"
+      ],
+      "golden_answer_keywords": [
+        "pod",
+        "container",
+        "namespace"
+      ],
+      "answer": "A Pod is the smallest deployable unit in Kubernetes\u2014a group of one or more containers that share storage, network resources, and a specification for how to run the containers. It provides a shared Linux\u2011namespace and cgroup context, so the containers inside a Pod are co\u2011located, co\u2011scheduled, and run together as a single logical host for an application. [1]",
+      "sources": [
+        "concepts__workloads__pods.html"
+      ],
+      "contexts": [
+        "Concepts \u203a Workloads \u203a Pods\nPods | Kubernetes  \nPodsPods are the smallest deployable units of computing that you can create and manage in Kubernetes.A Pod (as in a pod of whales or pea pod) is a group of one or more  \ncontainers, with shared storage and network resources, and a specification for how to run the containers. A Pod's contents are always co-located and  \nco-scheduled, and run in a shared context. A Pod models an  \napplication-specific \"logical host\": it contains one or more application  \ncontainers which are relatively tightly coupled.  \nIn non-cloud contexts, applications executed on the same physical or virtual machine are analogous to cloud applications executed on the same logical host.As well as application containers, a Pod can contain  \ninit containers that run  \nduring Pod startup. You can also inject  \nephemeral containers  \nfor debugging a running Pod.What is a Pod?Note:You need to install a container runtime  \ninto each node in the cluster so that Pods can run there.The shared context of a Pod is a set of Linux namespaces, cgroups, and  \npotentially other facets of isolation - the same things that isolate a container. Within a Pod's context, the individual applications may have  \nfurther sub-isolations applied.A Pod is similar to a set of containers with shared namespaces and shared filesystem volumes.Pods in a Kubernetes cluster are used in two main ways:Pods that run a single container. The \"one-container-per-Pod\" model is the  \nmost common Kubernetes use case; in this case, you can think of a Pod as a  \nwrapper around a single container; Kubernetes manages Pods rather than managing  \nthe containers directly.Pods that run multiple containers that need to work together. A Pod can  \nencapsulate an application composed of  \nmultiple co-located containers that are  \ntightly coupled and need to share resources. These co-located containers  \nform a single cohesive unit.Grouping multiple co-located and co-managed containers in a single Pod is a  \nrelatively advanced use case. You should use this pattern only in specific  \ninstances in which your containers are tightly coupled.You don't need to run multiple containers to provide replication (for resilience  \nor capacity); if you need multiple replicas, see",
+        "Concepts \u203a Workloads \u203a Pods\nobject definition describes the object in detail.The Distributed System Toolkit: Patterns for Composite Containers explains common layouts for Pods with more than one container.Read about Pod topology spread constraintsRead Advanced Pod Configuration to learn the topic in detail.  \nThat page covers aspects of Pod configuration beyond the essentials, including:PriorityClassesRuntimeClassesadvanced ways to configure scheduling: the way that Kubernetes decides which node a Pod should run on.To understand the context for why Kubernetes wraps a common Pod API in other resources  \n(such as StatefulSets or  \nDeployments),  \nyou can read about the prior art, including:AuroraBorgMarathonOmegaTupperware.FeedbackWas this page helpful?Yes  \nNoThanks for the feedback. If you have a specific, answerable question about how to use Kubernetes, ask it on  \nStack Overflow.  \nOpen an issue in the GitHub Repository if you want to  \nreport a problem  \nor  \nsuggest an improvement.Last modified March 26, 2026 at 7:39 PM PST: Update Pod reference for PodGroup (e77da46210)",
+        "Concepts \u203a Workloads \u203a Pods\nWorkload management.Using PodsThe following is an example of a Pod which consists of a container running the image nginx:1.14.2.pods/simple-pod.yaml  \napiVersion: v1  \nkind: Pod  \nmetadata:  \nname: nginx  \nspec:  \ncontainers:  \n- name: nginx  \nimage: nginx:1.14.2  \nports:  \n- containerPort: 80  \nTo create the Pod shown above, run the following command:kubectl apply -f https://k8s.io/examples/pods/simple-pod.yaml  \nPods are generally not created directly and are created using workload resources.  \nSee Working with Pods for more information on how Pods are used  \nwith workload resources.Workload resources for managing podsUsually you don't need to create Pods directly, even singleton Pods. Instead, create them using workload resources such as Deployment or Job.  \nIf your Pods need to track state, consider the  \nStatefulSet resource.Each Pod is meant to run a single instance of a given application. If you want to  \nscale your application horizontally (to provide more overall resources by running  \nmore instances), you should use multiple Pods, one for each instance. In  \nKubernetes, this is typically referred to as replication.  \nReplicated Pods are usually created and managed as a group by a workload resource  \nand its controller.See Pods and controllers for more information on how  \nKubernetes uses workload resources, and their controllers, to implement application  \nscaling and auto-healing.Pods natively provide two kinds of shared resources for their constituent containers:  \nnetworking and storage.Working with PodsYou'll rarely create individual Pods directly in Kubernetes-even singleton Pods. This  \nis because Pods are designed as relatively ephemeral, disposable entities. When  \na Pod gets created (directly by you, or indirectly by a  \ncontroller), the new Pod is  \nscheduled to run on a Node in your cluster.  \nThe Pod remains on that node until the Pod finishes execution, the Pod object is deleted,  \nthe Pod is evicted for lack of resources, or the node fails.Note:Restarting a container in a Pod should not be confused with restarting a Pod. A Pod  \nis not a process, but an environment for running container(s). A Pod persists until  \nit is deleted.The name of a Pod must be a valid  \nDNS subdomain",
+        "Concepts \u203a Workloads \u203a Pods\nvalue, but this can produce unexpected results for the Pod hostname. For best compatibility,  \nthe name should follow the more restrictive rules for a  \nDNS label.Pod OSFEATURE STATE:  \nKubernetes v1.25 [stable]You should set the .spec.os.name field to either windows or linux to indicate the OS on  \nwhich you want the pod to run. These two are the only operating systems supported for now by  \nKubernetes. In the future, this list may be expanded.In Kubernetes v1.36, the value of .spec.os.name does not affect  \nhow the kube-scheduler  \npicks a node for the Pod to run on. In any cluster where there is more than one operating system for  \nrunning nodes, you should set the  \nkubernetes.io/os  \nlabel correctly on each node, and define pods with a nodeSelector based on the operating system  \nlabel. The kube-scheduler assigns your pod to a node based on other criteria and may or may not  \nsucceed in picking a suitable node placement where the node OS is right for the containers in that Pod.  \nThe Pod security standards also use this  \nfield to avoid enforcing policies that aren't relevant to the operating system.Pods and controllersYou can use workload resources to create and manage multiple Pods for you. A controller  \nfor the resource handles replication and rollout and automatic healing in case of  \nPod failure. For example, if a Node fails, a controller notices that Pods on that  \nNode have stopped working and creates a replacement Pod. The scheduler places the  \nreplacement Pod onto a healthy Node.Here are some examples of workload resources that manage one or more Pods:DeploymentStatefulSetDaemonSetSpecifying a scheduling groupFEATURE STATE:  \nKubernetes v1.35 [alpha](disabled by default)By default, Kubernetes schedules every Pod individually. However, some tightly-coupled applications  \nneed a group of Pods to be scheduled simultaneously to function correctly.You can link a Pod to a PodGroup using the  \nscheduling group field  \n(spec.schedulingGroup). This tells the kube-scheduler that the Pod belongs to a specific  \ngroup, enabling it to apply group-level coordinated placement decisions for the entire group at once.Pod templatesControllers for workload resources create Pods"
+      ],
+      "context_sources": [
+        "concepts__workloads__pods.html",
+        "concepts__workloads__pods.html",
+        "concepts__workloads__pods.html",
+        "concepts__workloads__pods.html"
+      ],
+      "latency_ms": 28909.1,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "concepts__workloads__pods.html"
+        ]
+      },
+      "tokens_used": 3578,
+      "confidence": 1.0,
+      "crag_action": "correct",
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "metrics": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 1.0,
+        "context_precision": 1.0,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b"
+    },
+    {
+      "id": "q-002",
+      "question": "What is a Kubernetes Deployment and what does it manage?",
+      "intent": "rag",
+      "demonstrates_feature": "baseline",
+      "golden_sources": [
+        "concepts__workloads__controllers__deployment.txt"
+      ],
+      "golden_answer_keywords": [
+        "deployment",
+        "replica",
+        "rolling update"
+      ],
+      "answer": "A **Kubernetes Deployment** is a controller object that manages a set of Pods (through ReplicaSets) to run an application workload, typically a stateless one. It lets you declare the desired state of those Pods, and the Deployment controller will create, update, or delete the underlying ReplicaSets and Pods so that the actual state matches the desired state, handling rollouts, rollbacks, scaling, and other lifecycle actions in a controlled manner\u30102\u3011.",
+      "sources": [
+        "concepts__overview__what-is-kubernetes.docx",
+        "concepts__workloads__controllers__deployment.txt",
+        "tutorials__kubernetes-basics__scale__scale-intro.html"
+      ],
+      "contexts": [
+        "Concepts \u203a Overview \u203a What-Is-Kubernetes\nOverview | Kubernetes  \nOverviewKubernetes is a portable, extensible, open source platform for managing containerized workloads and services that facilitate both declarative configuration and automation. It has a large, rapidly growing ecosystem. Kubernetes services, support, and tools are widely available.This page is an overview of Kubernetes.The name Kubernetes originates from Greek, meaning helmsman or pilot. K8s as an abbreviation  \nresults from counting the eight letters between the \"K\" and the \"s\". Google open sourced the  \nKubernetes project in 2014. Kubernetes combines  \nover 15 years of Google's experience running  \nproduction workloads at scale with best-of-breed ideas and practices from the community.Why you need Kubernetes and what it can doContainers are a good way to bundle and run your applications. In a production  \nenvironment, you need to manage the containers that run the applications and  \nensure that there is no downtime. For example, if a container goes down, another  \ncontainer needs to start. Wouldn't it be easier if this behavior was handled by a system?That's how Kubernetes comes to the rescue! Kubernetes provides you with a framework  \nto run distributed systems resiliently. It takes care of scaling and failover for  \nyour application, provides deployment patterns, and more. For example: Kubernetes  \ncan easily manage a canary deployment for your system.Kubernetes provides you with:Service discovery and load balancing  \nKubernetes can expose a container using a DNS name or its own IP address.  \nIf traffic to a container is high, Kubernetes is able to load balance and distribute  \nthe network traffic so that the deployment is stable.Storage orchestration  \nKubernetes allows you to automatically mount a storage system of your choice, such as  \nlocal storage, public cloud providers, and more.Automated rollouts and rollbacks  \nYou can describe the desired state for your deployed containers using Kubernetes,  \nand it can change the actual state to the desired state at a controlled rate.  \nFor example, you can automate Kubernetes to create new containers for your  \ndeployment, remove existing containers and adopt all their resources to the new container.Automatic bin packing  \nYou provide Kubernetes with a cluster of nodes that it can use to run containerized tasks.",
+        "Deployments | Kubernetes DeploymentsA Deployment manages a set of Pods to run an application workload, usually one that doesn't maintain state.A Deployment provides declarative updates for Pods and ReplicaSets.You describe a desired state in a Deployment, and the Deployment Controller changes the actual state to the desired state at a controlled rate. You can define Deployments to create new ReplicaSets, or to remove existing Deployments and adopt all their resources with new Deployments.Note:Do not manage ReplicaSets owned by a Deployment. Consider opening an issue in the main Kubernetes repository if your use case is not covered below.Use CaseThe following are typical use cases for Deployments:Create a Deployment to rollout a ReplicaSet. The ReplicaSet creates Pods in the background. Check the status of the rollout to see if it succeeds or not.Declare the new state of the Pods by updating the PodTemplateSpec of the Deployment. A new ReplicaSet is created, and the Deployment gradually scales it up while scaling down the old ReplicaSet, ensuring Pods are replaced at a controlled rate. Each new ReplicaSet updates the revision of the Deployment.Rollback to an earlier Deployment revision if the current state of the Deployment is not stable. Each rollback updates the revision of the Deployment.Scale up the Deployment to facilitate more load.Pause the rollout of a Deployment to apply multiple fixes to its PodTemplateSpec and then resume it to start a new rollout.Use the status of the Deployment as an indicator that a rollout has stuck.Clean up older ReplicaSets that you don't need anymore.Creating a DeploymentThe following is an example of a Deployment. It creates a ReplicaSet to bring up three nginx Pods:controllers/nginx-deployment.yaml apiVersion: apps/v1 kind: Deployment metadata: name: nginx-deployment labels: app: nginx spec: replicas: 3 selector: matchLabels: app: nginx template: metadata: labels: app: nginx spec: containers: - name: nginx image: nginx:1.14.2 ports: - containerPort: 80 In this example:A Deployment named nginx-deployment is created, indicated by the .metadata.name field. This name will become the basis for the ReplicaSets and Pods which are created later.",
+        "Concepts \u203a Overview \u203a What-Is-Kubernetes\nYou tell Kubernetes how much CPU and memory (RAM) each container needs. Kubernetes can fit  \ncontainers onto your nodes to make the best use of your resources.Self-healing  \nKubernetes restarts containers that fail, replaces containers, kills containers that don't  \nrespond to your user-defined health check, and doesn't advertise them to clients until they  \nare ready to serve.Secret and configuration management  \nKubernetes lets you store and manage sensitive information, such as passwords, OAuth tokens,  \nand SSH keys. You can deploy and update secrets and application configuration without  \nrebuilding your container images, and without exposing secrets in your stack configuration.Batch execution  \nIn addition to services, Kubernetes can manage your batch and CI workloads, replacing containers that fail, if desired.Horizontal scaling  \nScale your application up and down with a simple command, with a UI, or automatically based on CPU usage.IPv4/IPv6 dual-stack  \nAllocation of IPv4 and IPv6 addresses to Pods and Services.Designed for extensibility  \nAdd features to your Kubernetes cluster without changing upstream source code.What Kubernetes is notKubernetes is not a traditional, all-inclusive PaaS (Platform as a Service) system.  \nSince Kubernetes operates at the container level rather than at the hardware level,  \nit provides some generally applicable features common to PaaS offerings, such as  \ndeployment, scaling, load balancing, and lets users integrate their logging, monitoring,  \nand alerting solutions. However, Kubernetes is not monolithic, and these default solutions  \nare optional and pluggable. Kubernetes provides the building blocks for building developer  \nplatforms, but preserves user choice and flexibility where it is important.Kubernetes:Does not limit the types of applications supported. Kubernetes aims to support an  \nextremely diverse variety of workloads, including stateless, stateful, and data-processing  \nworkloads. If an application can run in a container, it should run great on Kubernetes.Does not deploy source code and does not build your application. Continuous Integration,  \nDelivery, and Deployment (CI/CD) workflows are determined by organization cultures and  \npreferences as well as technical requirements.Does not provide application-level services, such as middleware (for example, message buses),",
+        "A Deployment is not paused by default when it is created.What's nextLearn more about Pods.Run a stateless application using a Deployment.Read the Deployment to understand the Deployment API.Read about PodDisruptionBudget and how you can use it to manage application availability during disruptions.Use kubectl to create a Deployment.FeedbackWas this page helpful?Yes NoThanks for the feedback. If you have a specific, answerable question about how to use Kubernetes, ask it on Stack Overflow. Open an issue in the GitHub Repository if you want to report a problem or suggest an improvement.Last modified April 19, 2026 at 8:43 PM PST: docs: remove future auto rollback statement from Deployment docs (73f9f06cf5)",
+        "Tutorials \u203a Kubernetes-Basics \u203a Scale \u203a Scale-Intro\nnetwork traffic to all Pods of an exposed Deployment. Services will monitor continuously  \nthe running Pods using endpoints, to ensure the traffic is sent only to available Pods.Once you have multiple instances of an application running, you would be able to  \ndo Rolling updates without downtime. We'll cover that in the next section of the  \ntutorial. Now, let's go to the terminal and scale our application.Scaling a DeploymentTo list your Deployments, use the get deployments subcommand:kubectl get deployments  \nThe output should be similar to:NAME READY UP-TO-DATE AVAILABLE AGE  \nkubernetes-bootcamp 1/1 1 1 11m  \nWe should have 1 Pod. If not, run the command again. This shows:NAME lists the names of the Deployments in the cluster.READY shows the ratio of CURRENT/DESIRED replicasUP-TO-DATE displays the number of replicas that have been updated to achieve the desired state.AVAILABLE displays how many replicas of the application are available to your users.AGE displays the amount of time that the application has been running.To see the ReplicaSet created by the Deployment, run:kubectl get rs  \nNotice that the name of the ReplicaSet is always formatted as  \n[DEPLOYMENT-NAME]-[RANDOM-STRING].  \nThe random string is randomly generated and uses the pod-template-hash as a seed.Two important columns of this output are:DESIRED displays the desired number of replicas of the application, which you  \ndefine when you create the Deployment. This is the desired state.CURRENT displays how many replicas are currently running.Next, let's scale the Deployment to 4 replicas. We'll use the kubectl scale command,  \nfollowed by the Deployment type, name and desired number of instances:kubectl scale deployments/kubernetes-bootcamp --replicas=4  \nTo list your Deployments once again, use get deployments:kubectl get deployments  \nThe change was applied, and we have 4 instances of the application available. Next,  \nlet's check if the number of Pods changed:kubectl get pods -o wide  \nThere are 4 Pods now, with different IP addresses. The change was registered in  \nthe Deployment events log. To check that, use the describe subcommand:kubectl describe deployments/kubernetes-bootcamp"
+      ],
+      "context_sources": [
+        "concepts__overview__what-is-kubernetes.docx",
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__overview__what-is-kubernetes.docx",
+        "concepts__workloads__controllers__deployment.txt",
+        "tutorials__kubernetes-basics__scale__scale-intro.html"
+      ],
+      "latency_ms": 48092.7,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "concepts__workloads__controllers__deployment.txt"
+        ]
+      },
+      "tokens_used": 3860,
+      "confidence": 1.0,
+      "crag_action": "correct",
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "metrics": {
+        "faithfulness": 0.7647,
+        "answer_relevancy": 0.9088,
+        "context_precision": 0.5,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b"
+    },
+    {
+      "id": "q-003",
+      "question": "A container in my pod keeps crashing and restarting. How do I see what went wrong?",
+      "intent": "rag",
+      "demonstrates_feature": "baseline",
+      "golden_sources": [
+        "concepts__cluster-administration__logging.pdf",
+        "reference__kubectl__cheatsheet.txt"
+      ],
+      "golden_answer_keywords": [
+        "kubectl logs",
+        "previous",
+        "container"
+      ],
+      "answer": "To troubleshoot a crashing container you can look at two sources that the API makes available:\n\n1. **Container logs** \u2013 The kubelet keeps the stdout/stderr of each container and exposes them through the API.  \n   * Use `kubectl logs <pod> -c <container>` (or the raw API endpoint `\u2026/pods/<pod>/log?stream=Stderr`) to fetch the stderr stream and see the error messages that caused the crash.  \n   * If the container has been restarted, the kubelet retains the logs of the most recent terminated instance, so you can still retrieve the output that led to the failure.  \n\n2. **Container status details** \u2013 The pod\u2019s status includes a `containerStatuses` entry with a `lastState` field.  \n   * `containerStatuses.lastState` contains the previous `ContainerState` (e.g., `running.startedAt`, `terminated.reason`, `terminated.message`, and the exit code).  \n   * Inspect this with `kubectl describe pod <pod>` or by retrieving the pod JSON (`kubectl get pod <pod> -o json`) and looking at `status.containerStatuses[].lastState`. The `lastState` information helps you understand why the container terminated and whether the pod\u2011level restart policy applied.\n\nSo, to see what went wrong:\n\n```bash\n# View the current logs (stdout and stderr)\nkubectl logs <pod> -c <container>\n\n# View only the stderr stream (as shown in the docs)\nkubectl get --raw \"/api/v1/namespaces/<ns>/pods/<pod>/log?stream=Stderr\"\n\n# Examine the last termination state for details\nkubectl describe pod <pod>\n# or\nkubectl get pod <pod> -o json | jq '.status.containerStatuses[] | .lastState'\n```\n\nThese steps let you see the error output and the termination reason that caused the container to crash and restart.  \n\n**Sources:**\u202f[2] for log access and kubelet log rotation;\u202f[3] for `containerStatuses.lastState` details.",
+      "sources": [
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "concepts__cluster-administration__logging.pdf"
+      ],
+      "contexts": [
+        "Reference \u203a Kubernetes-Api \u203a Workload-Resources \u203a Pod-V1\nMore info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probesrestartPolicy (string)RestartPolicy defines the restart behavior of individual containers in a pod. This overrides the pod-level restart policy. When this field is not specified, the restart behavior is defined by the Pod's restart policy and the container type. Additionally, setting the RestartPolicy as \"Always\" for the init container will have the following effect: this init container will be continually restarted on exit until all regular containers have terminated. Once all regular containers have completed, all init containers with restartPolicy \"Always\" will be shut down. This lifecycle differs from normal init containers and is often referred to as a \"sidecar\" container. Although this init container still starts in the init container sequence, it does not wait for the container to complete before proceeding to the next init container. Instead, the next init container starts immediately after this init container is started, or after any startupProbe has successfully completed.restartPolicyRules ([]ContainerRestartRule)Atomic: will be replaced during a mergeRepresents a list of rules to be checked to determine if the container should be restarted on exit. The rules are evaluated in order. Once a rule matches a container exit condition, the remaining rules are ignored. If no rule matches the container exit condition, the Container-level restart policy determines the whether the container is restarted or not. Constraints on the rules: - At most 20 rules are allowed. - Rules can have the same action. - Identical rules are not forbidden in validations. When rules are specified, container MUST set RestartPolicy explicitly even it if matches the Pod's RestartPolicy.ContainerRestartRule describes how a container exit is handled.restartPolicyRules.action (string), requiredSpecifies the action taken on a container exit if the requirements are satisfied.",
+        "Concepts \u203a Cluster-Administration \u203a Logging\nkind: Pod metadata: name: counter-err spec: containers: - name: count image: busybox:1.28 args: [/bin/sh, -c, 'i=0; while true; do echo \"$i: $(date)\"; echo \"$i: err\" >&2 ; i=$((i+1)); sleep 1; done'] To run this pod, use the following command:kubectl apply -f https://k8s.io/examples/debug/counter-pod-err.yaml To fetch only the stderr log stream, you can run:kubectl get --raw \"/api/v1/namespaces/default/pods/counter-err/log?stream=Stderr\" See the kubectl logs documentation for more details.How nodes handle container logsA container runtime handles and redirects any output generated to a containerized application's stdout and stderr streams. Different container runtimes implement this in different ways; however, the integration with the kubelet is standardized as the CRI logging format.By default, if a container restarts, the kubelet keeps one terminated container with its logs. If a pod is evicted from the node, all corresponding containers are also evicted, along with their logs.The kubelet makes logs available to clients via a special feature of the Kubernetes API. The usual way to access this is by running kubectl logs.Log rotationFEATURE STATE: Kubernetes v1.21 [stable]The kubelet is responsible for rotating container logs and managing the logging directory structure. The kubelet sends this information to the container runtime (using CRI), and the runtime writes the container logs to the given location.You can configure two kubelet configuration settings, containerLogMaxSize (default 10Mi) and containerLogMaxFiles (default 5), using the kubelet configuration file.",
+        "Reference \u203a Kubernetes-Api \u203a Workload-Resources \u203a Pod-V1\nFor example, Device Plugin got unregistered and hasn't been re-registered since.In future we may want to introduce the PermanentlyUnhealthy Status.containerStatuses.allocatedResourcesStatus.resources.message (string)Message provides human-readable context for Health (e.g. \"ECC error count exceeded threshold\"). This field is populated by the kubelet when ResourceHealthStatusMessage is enabled if the DRA plugin returns a message, and is null otherwise.containerStatuses.containerID (string)ContainerID is the ID of the container in the format '<type>://<container_id>'. Where type is a container runtime identifier, returned from Version call of CRI API (for example \"containerd\").containerStatuses.image (string), requiredImage is the name of container image that the container is running. The container image may not match the image used in the PodSpec, as it may have been resolved by the runtime. More info: https://kubernetes.io/docs/concepts/containers/images.containerStatuses.imageID (string), requiredImageID is the image ID of the container's image. The image ID may not match the image ID of the image used in the PodSpec, as it may have been resolved by the runtime.containerStatuses.lastState (ContainerState)LastTerminationState holds the last termination state of the container to help debug container crashes and restarts. This field is not populated if the container is still running and RestartCount is 0.ContainerState holds a possible state of container. Only one of its members may be specified. If none of them is specified, the default one is ContainerStateWaiting.containerStatuses.lastState.running (ContainerStateRunning)Details about a running containerContainerStateRunning is a running state of a container.containerStatuses.lastState.running.startedAt (Time)Time at which the container was last (re-)startedTime is a wrapper around time.Time which supports correct marshaling to YAML and JSON.",
+        "Reference \u203a Kubernetes-Api \u203a Workload-Resources \u203a Pod-V1\nA pod can be assigned to a node that has a problem in kubelet which in turns means that HostIPs will not be updated even if there is a node is assigned to this pod.HostIP represents a single IP address allocated to the host.hostIPs.ip (string), requiredIP is the IP address assigned to the hoststartTime (Time)RFC 3339 date and time at which the object was acknowledged by the Kubelet. This is before the Kubelet pulled the container image(s) for the pod.Time is a wrapper around time.Time which supports correct marshaling to YAML and JSON. Wrappers are provided for many of the factory methods that the time package offers.phase (string)The phase of a Pod is a simple, high-level summary of where the Pod is in its lifecycle. The conditions array, the reason and message fields, and the individual container status arrays contain more detail about the pod's status. There are five possible phase values:Pending: The pod has been accepted by the Kubernetes system, but one or more of the container images has not been created. This includes time before being scheduled as well as time spent downloading images over the network, which could take a while. Running: The pod has been bound to a node, and all of the containers have been created. At least one container is still running, or is in the process of starting or restarting. Succeeded: All containers in the pod have terminated in success, and will not be restarted. Failed: All containers in the pod have terminated, and at least one container has terminated in failure. The container either exited with non-zero status or was terminated by the system. Unknown: For some reason the state of the pod could not be obtained, typically due to an error in communicating with the host of the pod.More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#pod-phasePossible enum values:\"Failed\" means that all containers in the pod have terminated, and at least one container has terminated in a failure (exited with a non-zero exit code or was stopped by the system).\"Pending\" means the pod has been accepted by the system, but one or more of the containers has not been started."
+      ],
+      "context_sources": [
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "concepts__cluster-administration__logging.pdf",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx"
+      ],
+      "latency_ms": 48230.2,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 0.5,
+        "matched": [
+          "concepts__cluster-administration__logging.pdf"
+        ]
+      },
+      "tokens_used": 4095,
+      "confidence": 1.0,
+      "crag_action": "correct",
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "metrics": {
+        "faithfulness": 0.5556,
+        "answer_relevancy": 0.8529,
+        "context_precision": 0.5,
+        "context_recall": 0.5
+      },
+      "judge_model": "qwen-3.8-27b"
+    },
+    {
+      "id": "q-004",
+      "question": "How do containers share resources within a Pod?",
+      "intent": "rag",
+      "demonstrates_feature": "baseline",
+      "golden_sources": [
+        "concepts__workloads__pods.html"
+      ],
+      "golden_answer_keywords": [
+        "network namespace",
+        "volumes",
+        "localhost"
+      ],
+      "answer": "Containers in a Pod share the same network namespace and storage resources.\u202fAll containers in the Pod use a single IP address and the same port space, so they can reach one another via\u202f`localhost`.\u202fThey also share the same set of Linux namespaces, cgroups, and any volumes that are mounted into the Pod, giving them a common filesystem and isolation context. This shared context lets the containers communicate through standard inter\u2011process mechanisms (e.g., SystemV semaphores, POSIX shared memory) as well as through network calls to the shared IP/port space\u30101\u2020L1-L7\u3011\u30102\u2020L4-L9\u3011.",
+      "sources": [
+        "concepts__workloads__pods.html"
+      ],
+      "contexts": [
+        "Concepts \u203a Workloads \u203a Pods\ncan communicate with one another using localhost. When containers in a Pod communicate  \nwith entities outside the Pod,  \nthey must coordinate how they use the shared network resources (such as ports).  \nWithin a Pod, containers share an IP address and port space, and  \ncan find each other via localhost. The containers in a Pod can also communicate  \nwith each other using standard inter-process communications like SystemV semaphores  \nor POSIX shared memory. Containers in different Pods have distinct IP addresses  \nand can not communicate by OS-level IPC without special configuration.  \nContainers that want to interact with a container running in a different Pod can  \nuse IP networking to communicate.Containers within the Pod see the system hostname as being the same as the configured  \nname for the Pod. There's more about this in the networking  \nsection.Pod security settingsTo set security constraints on Pods and containers, you use the  \nsecurityContext field in the Pod specification. This field gives you  \ngranular control over what a Pod or individual containers can do. See Advanced Pod Configuration for more details.For basic security configuration, you should meet the Baseline Pod security standard and run containers as non-root. You can set simple security contexts:apiVersion: v1  \nkind: Pod  \nmetadata:  \nname: security-context-demo  \nspec:  \nsecurityContext:  \nrunAsUser: 1000  \nrunAsGroup: 3000  \nfsGroup: 2000  \ncontainers:  \n- name: sec-ctx-demo  \nimage: busybox  \ncommand: [\"sh\", \"-c\", \"sleep 1h\"]  \nFor advanced security context configuration including capabilities, seccomp profiles, and detailed security options, see the security concepts section.To learn about kernel-level security constraints that you can use,  \nsee Linux kernel security constraints for Pods and containers.To learn more about the Pod security context, see  \nConfigure a Security Context for a Pod or Container.Resource requests and limitsWhen you specify a Pod, you can optionally specify how much of each resource  \na container needs. The most common resources to specify are CPU and memory (RAM).When you specify the resource request for containers in a Pod, the  \nkube-scheduler uses this information to decide which node to place the Pod on.  \nWhen you specify a resource limit for a container, the kubelet enforces  \nthose limits so that the running container is not allowed to use more of that",
+        "Concepts \u203a Workloads \u203a Pods\nPods | Kubernetes  \nPodsPods are the smallest deployable units of computing that you can create and manage in Kubernetes.A Pod (as in a pod of whales or pea pod) is a group of one or more  \ncontainers, with shared storage and network resources, and a specification for how to run the containers. A Pod's contents are always co-located and  \nco-scheduled, and run in a shared context. A Pod models an  \napplication-specific \"logical host\": it contains one or more application  \ncontainers which are relatively tightly coupled.  \nIn non-cloud contexts, applications executed on the same physical or virtual machine are analogous to cloud applications executed on the same logical host.As well as application containers, a Pod can contain  \ninit containers that run  \nduring Pod startup. You can also inject  \nephemeral containers  \nfor debugging a running Pod.What is a Pod?Note:You need to install a container runtime  \ninto each node in the cluster so that Pods can run there.The shared context of a Pod is a set of Linux namespaces, cgroups, and  \npotentially other facets of isolation - the same things that isolate a container. Within a Pod's context, the individual applications may have  \nfurther sub-isolations applied.A Pod is similar to a set of containers with shared namespaces and shared filesystem volumes.Pods in a Kubernetes cluster are used in two main ways:Pods that run a single container. The \"one-container-per-Pod\" model is the  \nmost common Kubernetes use case; in this case, you can think of a Pod as a  \nwrapper around a single container; Kubernetes manages Pods rather than managing  \nthe containers directly.Pods that run multiple containers that need to work together. A Pod can  \nencapsulate an application composed of  \nmultiple co-located containers that are  \ntightly coupled and need to share resources. These co-located containers  \nform a single cohesive unit.Grouping multiple co-located and co-managed containers in a single Pod is a  \nrelatively advanced use case. You should use this pattern only in specific  \ninstances in which your containers are tightly coupled.You don't need to run multiple containers to provide replication (for resilience  \nor capacity); if you need multiple replicas, see",
+        "Concepts \u203a Workloads \u203a Pods\nwrapper around a single container; Kubernetes manages Pods rather than managing  \nthe containers directly.Pods that run multiple containers that need to work together. A Pod can  \nencapsulate an application composed of  \nmultiple co-located containers that are  \ntightly coupled and need to share resources. These co-located containers  \nform a single cohesive unit of service-for example, one container serving data  \nstored in a shared volume to the public, while a separate  \nsidecar container  \nrefreshes or updates those files.  \nThe Pod wraps these containers, storage resources, and an ephemeral network  \nidentity together as a single unit.For example, you might have a container that  \nacts as a web server for files in a shared volume, and a separate  \nsidecar container  \nthat updates those files from a remote source, as in the following diagram:Some Pods have init containers  \nas well as app containers.  \nBy default, init containers run and complete before the app containers are started.You can also have sidecar containers  \nthat provide auxiliary services to the main application Pod (for example: a service mesh).FEATURE STATE:  \nKubernetes v1.33 [stable](enabled by default)Enabled by default, the SidecarContainers feature gate  \nallows you to specify restartPolicy: Always for init containers.  \nSetting the Always restart policy ensures that the containers where you set it are  \ntreated as sidecars that are kept running during the entire lifetime of the Pod.  \nContainers that you explicitly define as sidecar containers  \nstart up before the main application Pod and remain running until the Pod is  \nshut down.Container probesA probe is a diagnostic performed periodically by the kubelet on a container.  \nTo perform a diagnostic, the kubelet can invoke different actions:ExecAction (performed with the help of the container runtime)TCPSocketAction (checked directly by the kubelet)HTTPGetAction (checked directly by the kubelet)You can read more about probes  \nin the Pod Lifecycle documentation.What's nextLearn about the lifecycle of a Pod.Read about PodDisruptionBudget  \nand how you can use it to manage application availability during disruptions.Pod is a top-level resource in the Kubernetes REST API.  \nThe  \nPod"
+      ],
+      "context_sources": [
+        "concepts__workloads__pods.html",
+        "concepts__workloads__pods.html",
+        "concepts__workloads__pods.html"
+      ],
+      "latency_ms": 48341.4,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "concepts__workloads__pods.html"
+        ]
+      },
+      "tokens_used": 3385,
+      "confidence": 0.9,
+      "crag_action": "correct",
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "metrics": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.9215,
+        "context_precision": 1.0,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b"
+    },
+    {
+      "id": "q-017",
+      "question": "What's the weather forecast for Seattle this weekend?",
+      "intent": "web_fallback",
+      "demonstrates_feature": "crag",
+      "golden_sources": [
+        "tavily_web"
+      ],
+      "golden_answer_keywords": [
+        "weather",
+        "Seattle"
+      ],
+      "answer": "I don\u2019t know.",
+      "sources": [
+        "https://www.weatherapi.com/",
+        "https://weatherspark.com/m/913/10/Average-Weather-in-October-in-Seattle-Washington-United-States",
+        "https://www.accuweather.com/en/us/seattle/98104/october-weather/351409",
+        "https://www.almanac.com/weather/longrange/wa/seattle",
+        "https://www.youtube.com/watch?v=MmbQjEhxLlA"
+      ],
+      "contexts": [
+        "Weather in Seattle\n{'error': {'code': 2007, 'message': 'API key has reached maximum calls per month allowed limit.'}}",
+        "Seattle October Weather, Average Temperature (Washington, United States)\n| Oct 2026 |  | Illumination | Moonrise | Moonset | Moonrise | Meridian Passing | Distance |\n ---  ---  ---  --- |\n| 1 |  | 73%  1:44 PM | NW | 9:22 PM | NE | 5:03 AM | S | 229,523 mi |\n| 2 |  | 62%  2:49 PM | NW | 10:28 PM | NE | 6:05 AM | S | 229,580 mi |\n| 3 |  | 50%  3:38 PM | NW | 11:45 PM | NE | 7:07 AM | S | 230,012 mi |\n| 4 |  | 38%  4:14 PM | NW  8:06 AM | S | 230,765 mi |\n| 5 |  | 27% | 1:07 AM | ENE | 4:41 PM | WNW  9:00 AM | S | 231,810 mi | [...] | 18 |  | 50% | 3:14 PM | SE | 11:56 PM | WSW  7:35 PM | S | 249,596 mi |\n| 19 |  | 64% | 3:38 PM | ESE  - | 8:22 PM | S | 247,457 mi |\n| 20 |  | 73%  1:06 AM | WSW | 3:58 PM | ESE | 9:07 PM | S | 244,650 mi |\n| 21 |  | 82%  2:17 AM | WSW | 4:15 PM | ESE | 9:50 PM | S | 241,370 mi |\n| 22 |  | 90%  3:29 AM | W | 4:31 PM | E | 10:34 PM | S | 237,868 mi |\n| 23 |  | 95%  4:42 AM | W | 4:47 PM | E | 11:19 PM | S | 234,431 mi |\n| 24 |  | 98%  5:58 AM | W | 5:05 PM | ENE  - | [...] | 25 |  | 100%  7:18 AM | WNW | 5:26 PM | ENE | 12:06 AM | S | 231,348 mi |\n| 26 |  | 100%  8:41 AM | WNW | 5:52 PM | ENE | 12:57 AM | S | 228,883 mi |\n| 27 |  | 98%  10:07 AM | NW | 6:27 PM | NE | 1:53 AM | S | 227,228 mi |\n| 28 |  | 93%  11:29 AM | NW | 7:15 PM | NE | 2:53 AM | S | 226,480 mi |\n| 29 |  | 86%  12:40 PM | NW | 8:18 PM | NE | 3:56 AM | S | 226,624 mi |\n| 30 |  | 76%  1:35 PM | NW | 9:34 PM | NE | 5:00 AM | S | 227,545 mi |",
+        "Seattle, WA Monthly Weather | AccuWeather\n## 2026\n\n## 10-Day\n\nTimes of sun and clouds\nPartial sunshine\nIntervals of clouds and sun\nA couple of showers possible\nVariable clouds with a shower\nLow clouds may break\nDecreasing clouds\nPartly sunny\nSunny to partly cloudy\nPartly sunny, showers around\n\n## Temperature Graph\n\n## October Weather in Seattle\n\n## Further Ahead\n\nFurther Ahead\n\n### November 2026\n\n### December 2026\n\n### January 2027\n\n## Around the Globe\n\nAround the Globe\n\n### Hurricane Tracker\n\n### Severe Weather\n\n### Radar & Maps [...] # Seattle, WA\n\nSeattle\n\nWashington\n\n## Around the Globe\n\nAround the Globe\n\n### Hurricane Tracker\n\n### Severe Weather\n\n### Radar & Maps\n\n### News & Features\n\n### Astronomy\n\n### Business\n\n### Climate\n\n### Health\n\n### Recreation\n\n### Sports\n\n### Travel\n\n### Warnings\n\n### Data Suite\n\n### Forensics\n\n### Advertising\n\n### Superior Accuracy\u2122\n\n### Video\n\n### Winter Center\n\n## Monthly\n\n## October\n\n## 2026\n\n## 10-Day [...] Recreation\n\nRockslide kills bicyclist on popular trail at Ohiopyle State Park\n\n2 days ago\n\n## Weather Near Seattle:",
+        "Long-Range Weather Forecast for Seattle, WA | Almanac.com\n| Dates | Weather Conditions |\n| Oct 1-3 | Rainy, chilly |\n| Oct 4-17 | Sunny, cool |\n| Oct 18-23 | Showers north, rainy periods south; mild |\n| Oct 24-31 | Isolated showers, warm |\n| October | temperature 54\u00b0 (1\u00b0 below avg.) precipitation 3\" (1.5\" below avg. north, 0.5\" above south) |\n\nNovember 2026 Long Range Weather Forecast for Pacific Northwest [...] The 2027 Old Farmer\u2019s Almanac\u2014buy now!\n\n### For daily wit & wisdom, get the Almanac newsletter.\n\n#### For daily wit & wisdom,\n\nSign up for the Almanac newsletter.\n\n# Long-Range Weather Forecast for Seattle, WA\n\nLocation Seattle, WA\n\n## 60-Day Weather Forecast\n\nOctober 2026 Long Range Weather Forecast for Pacific Northwest [...] and October will be warmer and wetter than normal.",
+        "Seattle Weather Forecast: Mild & Dry Conditions with Rain Chances Rising | October 12\u201316, 2026\n[3:57] forecast. While the Seattle lowlands stay mild, dry, and calm, just a short drive away in the Cascade Mountains, you\n[4:04] could be looking at significantly colder temperatures, reduced visibility, and active precipitation. These Pacific weather systems can hammer exposed\n[4:12] coastal areas and higher elevations way before we ever feel a drop in the city. [...] Seattle, Washington, is expected to experience mostly calm, mild, and dry weather throughout the workweek from October 12 through October 16, 2026. Temperatures are forecast to gradually rise, providing comfortable conditions for outdoor activities, commuting, and travel across the Seattle metropolitan area.\n\n\ud83c\udf24\ufe0f Seattle Weather Outlook: [...] Severe windstorms and heavy rainfall are not anticipated across the Seattle metropolitan area during this forecast period. However, conditions may vary near the Pacific coast and Cascade Mountains, where local weather can change more quickly.\n\n\ud83d\ude97 Travel Advisory: If you're planning a trip toward the Cascade Mountains or coastal Washington, check the latest forecasts before departure. Mountain and coastal conditions may differ significantly from those in downtown Seattle."
+      ],
+      "context_sources": [
+        "tavily_web",
+        "tavily_web",
+        "tavily_web",
+        "tavily_web",
+        "tavily_web"
+      ],
+      "latency_ms": 47703.1,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "tavily_web"
+        ]
+      },
+      "tokens_used": 2875,
+      "confidence": null,
+      "crag_action": "incorrect",
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "metrics": {
+        "faithfulness": 0.0,
+        "answer_relevancy": 0.0,
+        "context_precision": 1.0,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b"
+    },
+    {
+      "id": "q-018",
+      "question": "Explain the theory of quantum entanglement.",
+      "intent": "web_fallback",
+      "demonstrates_feature": "crag",
+      "golden_sources": [
+        "tavily_web"
+      ],
+      "golden_answer_keywords": [
+        "quantum",
+        "entanglement"
+      ],
+      "answer": "Quantum entanglement is a fundamental quantum\u2011mechanical phenomenon in which two or more particles become linked so that the state of each particle cannot be described independently of the others, even when the particles are separated by large distances.  \n\n**Core ideas of the theory**\n\n1. **Correlated states** \u2013 When particles interact or are created together, they can share a single, joint quantum state. After they separate, the overall state remains \u201centangled,\u201d meaning the measurement outcome of one particle instantly determines the outcome for the other(s)\u202f[1][4][5].  \n\n2. **Non\u2011locality** \u2013 The correlation is not a classical one; it does not rely on any signal traveling between the particles. Measuring an aspect (e.g., spin or polarization) of one particle gives immediate knowledge of the corresponding aspect of its partner, no matter how far apart they are\u202f[1][3]. This \u201cspooky action at a distance\u201d appears to violate ordinary notions of locality\u202f[1].  \n\n3. **Superposition foundation** \u2013 Entanglement builds on quantum superposition: each particle can exist in multiple possible states simultaneously, but the combined system is described by a superposition of joint possibilities. Because the joint state cannot be factored into separate states for each particle, the particles are said to be entangled\u202f[4][5].  \n\n4. **Resource perspective** \u2013 In quantum information theory, entangled states are treated as a valuable resource that enables tasks impossible with classical information alone, such as super\u2011dense coding, quantum teleportation, quantum cryptography, and quantum computing\u202f[5].  \n\n5. **Creation** \u2013 Entanglement is typically created by splitting a system whose total property is known (e.g., a particle with total spin\u202f0) into two parts that must have opposite properties to conserve the total, thereby guaranteeing a correlated outcome\u202f[1].  \n\n**Implications**  \nThe theory challenges classical intuitions about locality and reality, yet it underpins emerging technologies like quantum computers, secure communication networks, and quantum\u2011based sensing\u202f[4][5].  \n\nIn summary, quantum entanglement theory describes how particles can share a unified quantum state that produces instant, non\u2011local correlations, and how this phenomenon can be harnessed as a resource for advanced quantum technologies\u202f[4][5].",
+      "sources": [
+        "https://theconversation.com/what-is-quantum-entanglement-a-physicist-explains-the-science-of-einsteins-spooky-action-at-a-distance-191927",
+        "https://science.nasa.gov/what-is-the-spooky-science-of-quantum-entanglement",
+        "https://scienceandnonduality.com/videos/brilliantly-simple-explanation-of-quantum-entanglement",
+        "https://www.spinq.com/en/news-detail/quantum-entanglement-theory-a-complete-guide",
+        "https://en.wikipedia.org/wiki/Quantum_entanglement"
+      ],
+      "contexts": [
+        "What is quantum entanglement? A physicist explains the science of Einstein\u2019s \u2018spooky action at a distance\u2019\nIn the simplest terms, quantum entanglement means that aspects of one particle of an entangled pair depend on aspects of the other particle, no matter how far apart they are or what lies between them. These particles could be, for example, electrons or photons, and an aspect could be the state it is in, such as whether it is \u201cspinning\u201d in one direction or another. [...] The strange part of quantum entanglement is that when you measure something about one particle in an entangled pair, you immediately know something about the other particle, even if they are millions of light years apart. This odd connection between the two particles is instantaneous, seemingly breaking a fundamental law of the universe. Albert Einstein famously called the phenomenon \u201cspooky action at a distance.\u201d [...] To create entangled particles you essentially break a system into two, where the sum of the parts is known. For example, you can split a particle with spin of zero into two particles that necessarily will have opposite spins so that their sum is zero.\n\nIn 1935, Albert Einstein, Boris Podolsky and Nathan Rosen published a paper that describes a thought experiment designed to illustrate a seeming absurdity of quantum entanglement that challenged a foundational law of the universe.",
+        "What is Quantum Entanglement? NASA Science\nOne of the most far-out phenomena of quantum theory is quantum entanglement, the idea that particles of the same origin, which were once connected, always stay connected. Even if they separate and move far apart in time and space, they continue to share something beyond a mere bond \u2014 they shed their original quantum states and take on a new, united quantum state which they maintain forever. This means if something happens to one particle, it affects all the others with which it\u2019s entangled.",
+        "Brilliantly Simple Explanation of Quantum Entanglement - Science and Nonduality (SAND)\nEssentially, quantum entanglement suggests that acting on a particle here,can instantly influence a particle far away. This is often described as theoretical teleportation. It has huge implications for quantum mechanics, quantum communication and quantum computing.\n\n##### You May Also Like\n\n## How Can I Be Happy When There is So Much Wrong in the World\n\nIf your house was dark, would you refuse to light a candle simply because the whole world is not yet bright? [...] This video is hosted by Associate Professor Andrea Morello from theSchool of Engineering (University of New South Wales, Australia), who is able to give a very clear explanation of quantum entanglement. Morello shows that the best way to explain it is to first explore what it\u2019s not: classical correlation. And this can be done using a simple piece of paper and red and blue text.",
+        "Quantum Entanglement Theory \u2013 A Complete Guide | SpinQ\nThis concept lies at the heart of quantum mechanics and has profound implications for our understanding of reality, information transfer, and future technologies like quantum computing, quantum cryptography, and quantum networks.\n\nQuantum entanglement theory seeks to explain, quantify, and predict how entangled states behave and how they can be used for practical applications.\n\n1. ## The Basics of Quantum Entanglement Theory\n\n### 1.1 Superposition as a Foundation [...] Quantum entanglement is one of the most intriguing and counterintuitive phenomena in physics. It occurs when two or more particles become correlated in such a way that the state of one cannot be described independently of the state of the other(s)\u2014even when they are separated by vast distances. [...] ## Conclusion\n\nQuantum entanglement theory is both a profound scientific puzzle and a practical resource for emerging quantum technologies. It challenges our classical intuitions about locality and reality, yet enables powerful applications in computing, cryptography, and communication.",
+        "Quantum entanglement - Wikipedia\nIn quantum information theory, entangled states are considered a 'resource', i.e., something costly to produce and that allows implementing valuable transformations. The setting in which this perspective is most evident is that of \"distant labs\", i.e., two quantum systems labelled \"A\" and \"B\" on each of which arbitrary quantum operations can be performed, but which do not interact with each other quantum mechanically. The only interaction allowed is the exchange of classical information, which [...] Entanglement has many applications in quantum information theory. With the aid of entanglement, otherwise impossible tasks may be achieved. Among the best-known applications of entanglement are superdense coding and quantum teleportation. Most researchers believe that entanglement is necessary to realize quantum computing (although this is disputed by some). Entanglement is used in some protocols of quantum cryptography, but to prove the security of quantum key distribution (QKD) under standard [...] 1931, was an early recognition of what would later be called entanglement. That same year, Hermann Weyl observed in his textbook on group theory and quantum mechanics that quantum systems composed of multiple interacting parts exhibit a kind of Gestalt, in which \"the whole is greater than the sum of its parts\". In 1932, Erwin Schr\u00f6dinger derived the defining equations of quantum entanglement but left them unpublished. In 1935, Grete Hermann studied the mathematics of an electron interacting"
+      ],
+      "context_sources": [
+        "tavily_web",
+        "tavily_web",
+        "tavily_web",
+        "tavily_web",
+        "tavily_web"
+      ],
+      "latency_ms": 48135.4,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "tavily_web"
+        ]
+      },
+      "tokens_used": 3200,
+      "confidence": null,
+      "crag_action": "incorrect",
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "metrics": {
+        "faithfulness": 0.9143,
+        "answer_relevancy": 0.8443,
+        "context_precision": 1.0,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b"
+    },
+    {
+      "id": "q-019",
+      "question": "What is the Kubernetes 1.34 release date and what new features did it ship?",
+      "intent": "web_fallback",
+      "demonstrates_feature": "crag",
+      "golden_sources": [
+        "tavily_web"
+      ],
+      "golden_answer_keywords": [
+        "kubernetes",
+        "1.34"
+      ],
+      "answer": "The Kubernetes\u202fv1.34 \u201cOf\u202fWind\u202f&\u202fWill\u201d release was made generally available at the end of its release cycle on **27\u202fAugust\u202f2025**\u202f\u30103\u3011.  \n\nIt introduced a number of new capabilities, including:\n\n* **Production\u2011grade distributed tracing** \u2013 API\u2011server and kubelet tracing are now stable and enabled by default, allowing end\u2011to\u2011end OpenTelemetry tracing of pod lifecycles across all components\u202f\u30101\u3011.  \n* **KYAML**, a new alpha feature that enhances YAML workflows for Kubernetes manifests\u202f\u30101\u3011.  \n* **Dynamic Resource Allocation (DRA)** \u2013 a flexible framework for requesting and managing specialised hardware (GPUs, FPGAs, custom accelerators) via new API types such as `ResourceClaim`, `ResourceClaimTemplate`, `DeviceClass` and `ResourceSlice`\u202f\u30102\u3011.  \n* **VolumeAttributesClass** \u2013 new scheduling and runtime volume\u2011attribute modifications, useful for AI/ML workloads\u202f\u30104\u3011.  \n* **Observability enhancements** \u2013 new tracing and asynchronous scheduler APIs that can be incorporated into observability pipelines\u202f\u30104\u3011.  \n* **Structured Authentication Configuration** \u2013 a stable configuration file format supporting multiple JWT authenticators, CEL validation and dynamic reloads, improving auditability and management\u202f\u30104\u3011.  \n\nThese features collectively improve tracing, resource management, observability, and security in Kubernetes\u202f1.34.",
+      "sources": [
+        "https://www.youtube.com/watch?v=8YIsI_TVKNk",
+        "https://cloudsmith.com/blog/kubernetes-1-34-what-you-need-to-know",
+        "https://kubernetes.io/blog/2025/08/27/kubernetes-v1-34-release",
+        "https://www.fairwinds.com/blog/kubernetes-1.34-released-whats-new-upgrade",
+        "https://kubernetes.io/releases"
+      ],
+      "contexts": [
+        "Kubernetes 1.34 Features Explained: What's New? (O' WaW Release)\n# Kubernetes 1.34 Features Explained: What's New? (O' WaW Release)\n## Channel: KodeKloud (verified)\n461K subscribers\n346 likes\n\n### Description\n11,612 views\nPosted: 2025-12-16\n\ud83d\udd25 Practice Kubernetes 1.34 now: \n\nExplore the major changes in Kubernetes 1.34 \"Of Wind & Will\"! In this video, We go beyond the release notes to inspect the architecture behind the new Production-Grade Distributed Tracing and what the new Alpha feature, KYAML, means for your YAML workflows. [...] [16:15] Kubernetes 1.34 includes several other important improvements. Things such as production ready observability. So now both API server tracing and kublet\n[16:24] tracing have matured to even new stability. They were actually released on 1.34 for the API server and the Kublet is now also has tracing. So you\n[16:32] can now use open telemetry to trace [music] pod life cycles end to end across all of your Kubernetes components. So this is enabled by default in 1.34. It's production ready. [...] ### Transcript\n[0:00] Hey everyone, welcome back. Michael Forester here for CodeCloud. Today we are diving into Kubernetes 1.34, the latest release that actually dropped a\n[0:08] couple of months ago in August. And trust me, it brings some really neat stuff. Think of it like a fresh wind in\n[0:15] the sales of your cluster, which that will become clear in a second. So, we're going to talk about the problems this version solves, what's new, and how you",
+        "Kubernetes 1.34 Release Notes \u2013 Features, Updates & Fixes | Cloudsmith\nNew research: Dependency attacks 2026\u2002\u00b7\n\nLog inBook a demo\n\nBlog/Integrations & partners\n\n# Kubernetes 1.34 \u2013 What you need to know\n\nJul 28 2025\n\n\u2022\n\n30 min read\n\nWritten by\n\nNigel Douglas\n\nHead of Developer Relations- Cloudsmith\n\nKubernetes 1.34 is right around the corner, and there are quite a lot of changes to unpack! Removing enhancements with the status of \u201cDeferred\u201d or \u201cRemoved from Milestone\u201d we have 59 Enhancements in all listed within the official tracker. So, what\u2019s new in 1.34? [...] Dynamic Resource Allocation (DRA) in Kubernetes introduces a flexible framework for requesting and managing specialised hardware resources (like GPUs, FPGAs, and custom accelerators) beyond the traditional CPU and memory model. Introduced in Kubernetes v1.30 and targeting stability in v1.34, DRA enables workloads to claim devices using structured, opaque parameters through new API types such as `ResourceClaim`, `ResourceClaimTemplate`, `DeviceClass`, and `ResourceSlice`. This approach draws [...] If you don\u2019t have time to read the entire release report right now, Gerome Grignon provides an easy to consume, status overview of each feature release from 1.19 through to 1.34 - . The Cloudsmith team is really excited about this release and everything that comes with it! Let\u2019s jump into all of the major features and changes in Kubernetes 1.34.\n\n## Kubernetes 1.34 \u2013 Editor\u2019s pick:\n\nHere are a few of the changes that Cloudsmith employees are most excited about in this release:",
+        "Kubernetes v1.34: Of Wind & Will (O' WaW) | Kubernetes\nDuring the v1.34 release cycle, which spanned 15 weeks from 19th May 2025 to 27th August 2025, Kubernetes received contributions from as many as 106 different companies and 491 individuals. In the wider cloud native ecosystem, the figure goes up to 370 companies, counting 2235 total contributors. [...] December 2025\n\n KCD - Kubernetes Community Days: Suisse Romande: Dec 4, 2025 | Geneva, Switzerland\n\nYou can find the latest event details here.\n\n## Upcoming Release Webinar\n\nJoin members of the Kubernetes v1.34 Release Team on Wednesday, September 24th 2025 at 4:00 PM (UTC), to learn about the release highlights of this release. For more information and registration, visit the event page on the CNCF Online Programs site.\n\n## Get Involved [...] ## Kubernetes Blog\n\n# Kubernetes v1.34: Of Wind & Will (O' WaW)\n\nBy Kubernetes v1.34 Release Team |\n\nEditors: Agustina Barbetta, Alejandro Josue Leon Bellido, Graziano Casto, Melony Qin, Dipesh Rawat\n\nSimilar to previous releases, the release of Kubernetes v1.34 introduces new stable, beta, and alpha features. The consistent delivery of high-quality releases underscores the strength of our development cycle and the vibrant support from our community.",
+        "Kubernetes 1.34 Released: What's New and When to Upgrade\nBook Strategy Call\n\n# Kubernetes 1.34 Released: What's New and When to Upgrade\n\n9 September, 2025\n\n| by \n\nNick Haven [...] Update accounting to policy: Make sure your team has a policy regarding upgrade cadence and have a standard plan that works through the upgrade items.\n Test Dynamic Resource Allocation (DRA) and VolumeAttributesClass: Validate new scheduling and runtime volume attribute modifications in a non-production environment, especially for AI and ML workloads.\n Adopt Observability Features: Incorporate new tracing and asynchronous scheduler APIs into observability workflows. [...] Structured Authentication Configuration: Managing API server client authentication is now easier, with a stable configuration file format supporting multiple JavaScript Web Token (JWT) authenticators, Common Expression Language (CEL) validation, dynamic reloads, improving auditability and management.",
+        "Releases\nComplete 1.35 Schedule and Changelog\n\nView release details\n\n### 1.34\n\nLatest Release:1.34.12 (released: 2026-09-15)\n\nEnd of Life:2026-10-27\n\nPatch Releases:1.34.1, 1.34.2, 1.34.3, 1.34.4, 1.34.5, 1.34.6, 1.34.7, 1.34.8, 1.34.9, 1.34.10, 1.34.11, 1.34.12\n\nComplete 1.34 Schedule and Changelog\n\nView release details [...] Kubernetes\n\n   Documentation\n   Kubernetes Blog\n   Training\n   Careers\n   Partners\n   Community\n   \nVersions\n       Release Information\n       v1.37\n       v1.36\n       v1.35\n       v1.34\n       v1.33 [...] The Kubernetes project maintains release branches for the most recent three minor releases (1.37, 1.36, 1.35). Kubernetes 1.19 and newer receive approximately 1 year of patch support. Kubernetes 1.18 and older received approximately 9 months of patch support.\n\nKubernetes versions are expressed as x.y.z, where x is the major version, y is the minor version, and z is the patch version, following Semantic Versioning terminology.\n\nMore information in the version skew policy document."
+      ],
+      "context_sources": [
+        "tavily_web",
+        "tavily_web",
+        "tavily_web",
+        "tavily_web",
+        "tavily_web"
+      ],
+      "latency_ms": 47836.0,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "tavily_web"
+        ]
+      },
+      "tokens_used": 3536,
+      "confidence": null,
+      "crag_action": "incorrect",
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "metrics": {
+        "faithfulness": 0.9167,
+        "answer_relevancy": 0.9164,
+        "context_precision": 1.0,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b"
+    },
+    {
+      "id": "q-020",
+      "question": "What are the steps to deploy ArgoCD on a fresh Kubernetes cluster?",
+      "intent": "web_fallback",
+      "demonstrates_feature": "crag",
+      "golden_sources": [
+        "tavily_web"
+      ],
+      "golden_answer_keywords": [
+        "argo",
+        "argocd"
+      ],
+      "answer": "The deployment process consists of the following actions:\n\n1. **Create the Argo\u202fCD namespace** \u2013\u202fe.g. `kubectl create namespace argocd`.  \n2. **Apply the Argo\u202fCD manifests** \u2013\u202fthe official YAML bundle (or the Helm chart) is applied to that namespace, which installs all required components (Deployments, Services, NetworkPolicy, etc.)\u202f\u30102\u2020L1-L4\u3011.  \n3. **Expose the Argo\u202fCD API server** \u2013\u202fchoose one of the supported methods (LoadBalancer Service, Ingress, or `kubectl port\u2011forward`) so you can reach the UI/CLI\u202f\u30103\u2020L1-L4\u3011.  \n4. **Log in to Argo\u202fCD** \u2013\u202fdownload the CLI, then run `argocd login <server>` (or `argocd login --core` when using port\u2011forward) to obtain a token\u202f\u30103\u2020L4-L7\u3011.  \n5. **(Optional) Register a target cluster** \u2013\u202fif you want Argo\u202fCD to deploy to a different cluster, add the cluster credentials with `argocd cluster add \u2026` (or the declarative `Cluster` resource)\u202f\u30103\u2020L9-L13\u3011\u30104\u2020L1-L4\u3011.  \n6. **Create an Application** \u2013\u202feither via the UI or CLI, pointing to a Git repository that contains your Kubernetes manifests\u202f\u30101\u2020L1-L9\u3011\u30103\u2020L14-L18\u3011.  \n7. **Sync the Application** \u2013\u202ftrigger a sync (or set the sync policy to Automatic) so Argo\u202fCD reconciles the desired state from Git to the cluster\u202f\u30101\u2020L2-L4\u3011.  \n\nFollowing these steps will install Argo\u202fCD on a fresh Kubernetes cluster and get your first application running.",
+      "sources": [
+        "https://medium.com/@muppedaanvesh/a-hands-on-guide-to-argocd-on-kubernetes-part-1-%EF%B8%8F-7a80c1b0ac98",
+        "https://www.youtube.com/watch?v=fBd_tz6BALU",
+        "https://argo-cd.readthedocs.io/en/stable/getting_started",
+        "https://argo-cd.readthedocs.io/en/release-2.14/operator-manual/installation",
+        "https://inlets.dev/blog/2021/06/02/argocd-private-clusters.html"
+      ],
+      "contexts": [
+        "\u2388 A Hands-On Guide to ArgoCD on Kubernetes \u2014 PART-1 \u2699\ufe0f\nImage 8\n\nStep 1: ArgoCD Application Creation\n\nPress enter or click to view image in full size\n\nImage 9\n\nStep 2: ArgoCD Application Creation\n\nOnce the application is created, click on `Sync` to deploy the application to your Kubernetes cluster. If Sync Policy Set to Automatic then application will be deployed to kubernetes automatically.\n\nPress enter or click to view image in full size\n\nImage 10\n\n## Method 2: Using a Manifest File [...] First, create a Git repository that contains your Kubernetes manifests. This repository will serve as the source for ArgoCD to deploy your application.\n\n### Step 2: Create an Application in ArgoCD\n\nMethod 1: Using the ArgoCD UI\n\n1.   Create a Git Repository: First, create a Git repository that contains your Kubernetes manifests. This repository will serve as the source for ArgoCD to deploy your application.\n2.   Create an Application in ArgoCD: [...] apiVersion: apps/v1  \nkind: Deployment  \nmetadata:  \n name: nginx-deploy-1  \n labels:  \n app: nginx  \nspec:  \n replicas: 1  \n selector:  \n matchLabels:  \n app: nginx  \n template:  \n metadata:  \n labels:  \n app: nginx  \n spec:  \n containers:  \n - name: nginx-container  \n image: nginx:latest\nAfter deploying this application using ArgoCD, the `nginx-deploy-1` deployment will be running in your Kubernetes cluster.\n\n2. Updating the Deployment:",
+        "ArgoCD Installation on Kubernetes : Step-by-Step Guide\n[1:21] itself it's quite straightforward it involves two steps so the first step is we need to create the namespace and then\n[1:29] we need to apply the manifests so if we copy this command here we can\n[1:37] create the Argo CD namespace and then we can simply apply the manifests so this will go through it'll install\n[1:46] all the required components so the deployment Network policy Services clusterable bindings [...] [8:04] we're just going to deploy it to the local kubernetes cluster and we're going to deploy it to the default namespace\n[8:11] now if you have nested manifest you can enable things such as directory recurse but we're going to keep this very simple\n[8:20] we have two deployment files they both exist within the top level directory of Quick Start demo so if we click create you'll see that [...] We'll start by introducing the concepts of GitOps and continuous deployment and how they relate to ArgoCD. We'll then show you how to set up and configure ArgoCD on your Kubernetes cluster.\n\nWe will also cover how to connect ArgoCD to your Git repository and how to use it to deploy your applications. You'll learn how to define your desired application state in a Git repository and how ArgoCD will automatically ensure that the cluster matches this desired state.",
+        "Getting Started - Argo CD - Declarative GitOps CD for Kubernetes\nSkip to content\n\n Requirements\n 1. Install Argo CD\n 2. Download Argo CD CLI\n 3. Access Argo CD \n\n  + Service Type Load Balancer\n  + Ingress\n  + Port Forwarding\n 4. Log in Using The CLI\n 5. Register a Cluster to Deploy Apps To (Optional)\n 6. Create An Application From A Git Repository \n\n  + Creating Apps Via CLI\n  + Creating Apps Via UI\n 7. Sync (Deploy) The Application \n\n  + Syncing via CLI\n  + Syncing via UI\n\n# Getting Started\u00b6\n\nTip [...] ```\n   \n```\n\n## 5. Register a Cluster to Deploy Apps To (Optional)\u00b6\n\nThis step registers a cluster's credentials to Argo CD, and is only necessary when deploying to an external cluster. When deploying internally (to the same cluster that Argo CD is running in),  should be used as the application's K8s API server address.\n\nFirst list all clusters contexts in your current kubeconfig:\n\n```\n     \n``` [...] Follow the instructions to configure a certificate (and ensure that the client OS trusts it).\n Configure the client OS to trust the self signed certificate.\n Use the --insecure flag on all Argo CD CLI operations in this guide.\n\nNote\n\nDefault namespace for `kubectl` config must be set to `argocd`. This is only needed for the following commands since the previous commands have -n argocd already:\n\n```\n     =\n```\n\nUse `argocd login --core` to configure CLI access and skip steps 3-5.\n\nNote",
+        "Installation - Argo CD - Declarative GitOps CD for Kubernetes\nstill be possible to deploy to the same cluster (kubernetes.svc.default) with inputted credentials (i.e. `argocd cluster add  --in-cluster --namespace` ). [...] ```\n apiVersion:  kustomize.config.k8s.io/v1beta1 kind:  Kustomization namespace:   resources:  -   patches:  -  patch:  |-  - op: replace  path: /subjects/0/namespace  value:  target:  kind:  ClusterRoleBinding\n```\n\nThis patch ensures that the ClusterRoleBinding correctly maps to the ServiceAccount in your custom namespace, preventing any permission-related issues during the deployment.\n\n## Helm\u00b6 [...] namespace-install.yaml - Installation of Argo CD which requires only namespace level privileges (does not need cluster roles). Use this manifest set if you do not need Argo CD to deploy applications in the same cluster that Argo CD runs in, and will rely solely on inputted cluster credentials. An example of using this set of manifests is if you run several Argo CD instances for different teams, where each instance will be deploying applications to external clusters. It will still be possible",
+        "Learn how to manage apps across multiple Kubernetes clusters \u2013 Inlets \u2013 The Cloud Native Tunnel\ncreate a service account and roles in the target cluster\n fetch a bearer token of the service account\n configure a new cluster for Argo CD with the credentials in a declarative way\n\nFirst, create a service account manually in the target cluster for Argo CD. [...] ```\nexport TARGET_CTX = --context $TARGET_CTX --context $TARGET_CTX \\ --repo \\ --dest-namespace \\ --dest-server \\ --path \\ --helm-set = true \\ --helm-set generateBasicAuth = true \\ --helm-set functionNamespace = \\ --self-heal \\ --sync-policy\n```\n\nAs soon those commands are applied, you will notice Argo CD starts synchronisation the desired state to the target cluster. And a few moments later, you\u2019re applications are up and running! [...] Unfortunately, adding a cluster this way will fail in our scenario. Besides creating the service account in the target cluster, the command will also try to register the cluster in Argo CD with the endpoint in your context and will validate if Argo CD can communicate with the API service.\n\nLuckily for us, we can simulate the steps that the CLI takes to onboard a new cluster:"
+      ],
+      "context_sources": [
+        "tavily_web",
+        "tavily_web",
+        "tavily_web",
+        "tavily_web",
+        "tavily_web"
+      ],
+      "latency_ms": 48038.7,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "tavily_web"
+        ]
+      },
+      "tokens_used": 3642,
+      "confidence": null,
+      "crag_action": "incorrect",
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "metrics": {
+        "faithfulness": 0.7917,
+        "answer_relevancy": 0.9248,
+        "context_precision": 1.0,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b"
+    }
+  ],
+  "skipped": [],
+  "errors": [],
+  "aggregate": {
+    "n_evaluated": 8,
+    "n_skipped": 0,
+    "n_errors": 0,
+    "faithfulness": 0.743,
+    "context_precision": 0.875,
+    "context_recall": 0.938,
+    "answer_relevancy": 0.796,
+    "source_overlap": 0.938,
+    "forbidden_violations": 0,
+    "latency_ms": 45660.825
+  }
+}

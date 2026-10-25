@@ -26,7 +26,7 @@ def _down(name):
 
 def _use_fakes(monkeypatch, postgres_up=True):
     app.dependency_overrides[require_admin] = lambda: User(id=1, username="admin", is_admin=True)
-    for dep in (admin.get_pool, admin.get_qdrant, admin.get_redis, admin.get_llm):
+    for dep in (admin.get_pool, admin.get_qdrant, admin.get_redis, admin.get_llm, admin.get_tavily):
         app.dependency_overrides[dep] = lambda: object()
     monkeypatch.setattr(
         admin, "ping_postgres", _up("postgres") if postgres_up else _down("postgres")
@@ -34,6 +34,7 @@ def _use_fakes(monkeypatch, postgres_up=True):
     monkeypatch.setattr(admin, "ping_qdrant", _up("qdrant"))
     monkeypatch.setattr(admin, "ping_redis", _up("redis"))
     monkeypatch.setattr(admin, "ping_cerebras", _up("cerebras"))
+    monkeypatch.setattr(admin, "ping_tavily", _up("tavily"))
 
 
 def teardown_function():
@@ -53,7 +54,12 @@ def test_all_up_is_ok(monkeypatch):
     _use_fakes(monkeypatch)
     body = client.get("/admin/health").json()
     assert body["status"] == "ok"
-    assert [s["service"] for s in body["services"]] == ["postgres", "qdrant", "redis", "cerebras"]
+    assert [s["service"] for s in body["services"]] == [
+        "postgres",
+        "qdrant",
+        "redis",
+        "cerebras",
+    ]  # tavily only via /admin/health/tavily: its ping costs a credit
 
 
 def test_one_down_is_degraded(monkeypatch):
@@ -91,4 +97,9 @@ async def test_ping_times_out(monkeypatch):
 
 async def test_redis_not_configured():
     status = await admin.ping_redis(None)
+    assert (status.status, status.error) == ("down", "NotConfigured")
+
+
+async def test_tavily_not_configured():
+    status = await admin.ping_tavily(None)
     assert (status.status, status.error) == ("down", "NotConfigured")

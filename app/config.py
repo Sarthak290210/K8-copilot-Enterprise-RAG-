@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     # How many questions answer_relevancy asks the judge to reverse-engineer from each answer
     # (Ragas default 3). 1 saves ~15-20% of judge tokens; used from E3 on (E1/E2 ran with 3).
     eval_relevancy_strictness: int = 3
+    # Minimum gap between calls through llm_service (0 = off). The free trial allows
+    # gpt-oss-120b only 5 requests/min and 150/hour, so long eval runs set ~24 s (150/hour)
+    # via the environment instead of failing on 429s. Off for the API.
+    llm_min_interval_seconds: float = 0.0
     # gpt-oss reasoning depth: more = slower and more tokens.
     llm_reasoning_effort: Literal["low", "medium", "high"] = "low"
     embedding_provider: Literal["sentence-transformers"] = "sentence-transformers"
@@ -97,11 +101,11 @@ class Settings(BaseSettings):
     voyage_api_key: SecretStr | None = None
     voyage_model: str = "rerank-2.5"
     reranker_initial_top_k: int = 20
-    reranking_enabled_by_default: bool = True
+    reranking_enabled_by_default: bool = False  # E2: reranking hurt on this corpus
     crag_relevance_threshold: float = 0.7
     crag_ambiguous_threshold: float = 0.5
     crag_enabled_by_default: bool = True
-    reflection_min_score: float = 0.85
+    reflection_min_score: float = 0.8  # user's choice 2026-10-26 (was 0.85)
     max_reflection_retries: int = 2
     self_reflective_enabled_by_default: bool = False
 

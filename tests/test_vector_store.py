@@ -4,6 +4,7 @@ import pytest
 from qdrant_client import AsyncQdrantClient
 
 from app.config import settings
+from app.models import RetrievedChunk
 from app.services import vector_store
 
 
@@ -124,3 +125,25 @@ async def test_hybrid_search_fuses_dense_and_sparse(client):
 async def test_mismatched_lengths_rejected(client):
     with pytest.raises(ValueError, match="1 chunks but 0 embeddings"):
         await vector_store.upsert_chunks([chunk("a", 0, "a")], [], client)
+
+
+async def test_hybrid_search_with_a_custom_dense_retriever(client):
+    """HyDE plugs in as the dense half: BM25 still runs, at the same depth, then RRF."""
+    docs = [chunk("sparse-only.txt", 0, "CrashLoopBackOff"), *filler(6)]
+    await vector_store.upsert_chunks(docs, [vec(0.0, 1.0)] + [vec(0.0, 0.0, 1.0)] * 6, client)
+    depths = []
+
+    async def dense(depth):
+        depths.append(depth)
+        return [RetrievedChunk(text="from hyde", source="hyde.txt", score=0.9, metadata={})]
+
+    hits = await vector_store.hybrid_search(
+        "CrashLoopBackOff", None, top_k=3, client=client, dense_search=dense
+    )
+    assert depths == [settings.reranker_initial_top_k]
+    assert {"hyde.txt", "sparse-only.txt"} <= {h.source for h in hits}
+
+
+async def test_hybrid_search_needs_some_dense_input(client):
+    with pytest.raises(ValueError, match="query_embedding or dense_search"):
+        await vector_store.hybrid_search("q", None, client=client)

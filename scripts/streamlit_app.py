@@ -24,7 +24,10 @@ FEATURE_PHASE = {
     "enable_self_reflective": 3,
 }
 SEARCH_MODES = {"dense": 1, "sparse": 2, "hybrid": 2}
-CURRENT_PHASE = 2
+CURRENT_PHASE = 3
+# The UI sends every flag, so its toggles start at the API's defaults (GET /query/defaults,
+# from the *_ENABLED_BY_DEFAULT settings). Used only if the API can't be reached.
+FALLBACK_DEFAULTS: dict[str, Any] = {"search_mode": "hybrid", "top_k": 5, "enable_crag": True}
 
 
 # ---------------- HTTP helpers ----------------
@@ -75,6 +78,16 @@ def _login(username: str, password: str) -> bool:
     return True
 
 
+def _query_defaults() -> dict[str, Any]:
+    """The API's default flags, fetched once per session (fallback if the API is down)."""
+    if "query_defaults" not in st.session_state:
+        resp = _request("GET", "/query/defaults")
+        if resp is None or resp.status_code != 200:
+            return FALLBACK_DEFAULTS  # not cached: retried on the next rerun
+        st.session_state["query_defaults"] = resp.json()
+    return st.session_state["query_defaults"]
+
+
 # ---------------- small UI pieces ----------------
 
 
@@ -92,7 +105,19 @@ def _render_answer_card(payload: dict[str, Any]) -> None:
     badges += _badge(f"{meta.get('tokens_used', 0)} tokens", "#6b7280")
     if any((meta.get("cache_hits") or {}).values()):
         badges += _badge("cache hit", "#10b981")
+    crag = meta.get("crag") or {}
+    if crag:
+        web = " + web" if crag.get("web_used") else ""
+        badges += _badge(f"CRAG {crag.get('action')}{web}", "#8b5cf6")
+    if meta.get("reflection_iterations"):
+        badges += _badge(f"Self-RAG retries: {meta['reflection_iterations']}", "#f59e0b")
     st.markdown(badges, unsafe_allow_html=True)
+    if meta.get("refined_question"):
+        st.caption(f"Answered as: *{meta['refined_question']}*")
+    if meta.get("hyde_hypotheses"):
+        with st.expander("HyDE passages (searched instead of the question)"):
+            for passage in meta["hyde_hypotheses"]:
+                st.caption(passage)
     st.markdown(payload.get("answer", ""))
     if payload.get("confidence") is not None:
         st.caption(f"Confidence: {payload['confidence']:.2f}")
@@ -133,22 +158,25 @@ def _sidebar() -> dict[str, Any]:
 
         st.subheader("Retrieval flags")
         st.caption("Try profiles by hand. Greyed-out features arrive in later phases.")
+        defaults = _query_defaults()
         modes = list(SEARCH_MODES)
+        default_mode = defaults.get("search_mode")
         search_mode = st.selectbox(
             "Search mode",
             modes,
+            index=modes.index(default_mode) if default_mode in modes else 0,
             format_func=lambda m: (
                 m if SEARCH_MODES[m] <= CURRENT_PHASE else f"{m} (Phase {SEARCH_MODES[m]})"
             ),
         )
-        top_k = st.slider("top_k", 1, 20, 5)
+        top_k = st.slider("top_k", 1, 20, int(defaults.get("top_k", 5)))
         flags: dict[str, Any] = {"search_mode": search_mode, "top_k": top_k}
         for flag, phase in FEATURE_PHASE.items():
             label = flag.removeprefix("enable_").replace("_", " ")
             available = phase <= CURRENT_PHASE
             value = st.toggle(
                 label if available else f"{label} (Phase {phase})",
-                value=False,
+                value=available and bool(defaults.get(flag, False)),
                 disabled=not available,
             )
             if available:

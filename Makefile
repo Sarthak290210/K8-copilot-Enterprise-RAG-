@@ -77,10 +77,10 @@ eval-rerank:
 	uv run python -m eval.run_ragas --profile hybrid+rerank
 
 eval-hyde:
-	uv run python -m eval.run_ragas --profile hybrid+rerank+hyde --filter hyde
+	uv run python -m eval.run_ragas --profile hybrid+hyde --filter hyde
 
 eval-crag:
-	uv run python -m eval.run_ragas --profile hybrid+rerank+crag --filter crag
+	uv run python -m eval.run_ragas --profile hybrid+crag --filter crag
 
 eval-all:
 	uv run python -m eval.run_ragas --profile all

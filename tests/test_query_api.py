@@ -60,3 +60,36 @@ def test_per_user_rate_limit(monkeypatch):
     assert codes[:limit] == [200] * limit and codes[limit] == 429
     # Another user has their own budget.
     assert client.post("/query", json={"question": "q"}, headers=auth(8)).status_code == 200
+
+
+def test_query_defaults_are_public_and_match_rag_service():
+    from app.services import rag_service
+
+    r = client.get("/query/defaults")  # no token: the UI reads it before login
+    assert r.status_code == 200 and r.json() == rag_service.DEFAULT_FLAGS
+
+
+def test_bad_flags_are_rejected_before_any_work(monkeypatch):
+    async def fail_run_rag(question, flags):
+        raise AssertionError("run_rag should not be called")
+
+    monkeypatch.setattr(query_api, "run_rag", fail_run_rag)
+    for flags in ({"top_k": 0}, {"top_k": 100000}, {"enable_crag": "maybe"}, {"nope": 1}):
+        r = client.post("/query", json={"question": "q", "flags": flags}, headers=auth())
+        assert r.status_code == 422, flags
+
+
+def test_string_booleans_are_parsed(monkeypatch):
+    seen = {}
+
+    async def fake_run_rag(question, flags):
+        seen["flags"] = flags
+        return ChatResponse(answer="ok")
+
+    monkeypatch.setattr(query_api, "run_rag", fake_run_rag)
+    r = client.post(
+        "/query",
+        json={"question": "q", "flags": {"enable_crag": "false", "top_k": "3"}},
+        headers=auth(),
+    )
+    assert r.status_code == 200 and seen["flags"] == {"enable_crag": False, "top_k": 3}

@@ -1,3 +1,4 @@
+import time
 from types import SimpleNamespace
 
 import pytest
@@ -63,5 +64,48 @@ async def test_generate_with_json(fake_llm):
 @pytest.mark.parametrize("content", ["not json", "[1, 2]"])
 async def test_generate_with_json_rejects_bad_output(fake_llm, content):
     fake_llm(content)
-    with pytest.raises(llm_service.LLMJSONError):
+    with pytest.raises(llm_service.LLMJSONError) as caught:
         await llm_service.generate_with_json("system", "q")
+    # the failed call was still billed: callers can count it
+    assert caught.value.usage["total_tokens"] == 15
+    assert llm_service.tokens_spent(caught.value) == 15
+
+
+def test_tokens_spent_is_zero_for_other_errors():
+    assert llm_service.tokens_spent(RuntimeError("network")) == 0
+
+
+async def test_pacing_spaces_calls(fake_llm, monkeypatch):
+    fake_llm("ok")
+    monkeypatch.setattr(llm_service.settings, "llm_min_interval_seconds", 0.2)
+    monkeypatch.setattr(llm_service, "_pace_lock", None)
+    monkeypatch.setattr(llm_service, "_last_call_at", 0.0)
+    start = time.monotonic()
+    for _ in range(3):
+        await llm_service.generate("s", "q")
+    assert time.monotonic() - start >= 0.4  # 3 calls, 2 gaps of 0.2 s
+
+
+async def test_pacing_off_by_default(fake_llm):
+    fake_llm("ok")
+    assert llm_service.settings.llm_min_interval_seconds == 0
+    start = time.monotonic()
+    for _ in range(3):
+        await llm_service.generate("s", "q")
+    assert time.monotonic() - start < 0.2
+
+
+def test_pacing_works_across_event_loops(fake_llm, monkeypatch):
+    """An asyncio.Lock is bound to one loop: a second asyncio.run must get a fresh lock."""
+    import asyncio
+
+    fake_llm("ok")
+    monkeypatch.setattr(llm_service.settings, "llm_min_interval_seconds", 0.01)
+    monkeypatch.setattr(llm_service, "_pace_lock", None)
+    monkeypatch.setattr(llm_service, "_pace_loop", None)
+
+    async def two_concurrent_calls():  # contention makes the lock bind to the loop
+        await asyncio.gather(llm_service.generate("s", "q"), llm_service.generate("s", "q"))
+
+    asyncio.run(two_concurrent_calls())
+    asyncio.run(two_concurrent_calls())  # raised "bound to a different event loop" before

@@ -92,16 +92,29 @@ def fuse_rrf(
     by both searches beats one found by only one. The fused score replaces `score`; the dense
     and sparse ranks are kept in metadata.
     """
+    return fuse_many([dense, sparse], k=k, top_k=top_k, names=["dense", "sparse"])
+
+
+def fuse_many(
+    ranked_lists: list[list[RetrievedChunk]],
+    k: int | None = None,
+    top_k: int = 20,
+    names: list[str] | None = None,
+) -> list[RetrievedChunk]:
+    """RRF over any number of ranked lists (HyDE merges the question's and each hypothesis'
+    results). With `names`, each chunk's 1-based rank per list is kept as `<name>_rank`."""
     k = settings.rrf_k if k is None else k
     fused: dict[str, float] = {}
     first_seen: dict[str, RetrievedChunk] = {}
     ranks: dict[str, dict[str, int]] = {}
-    for name, ranked in (("dense", dense), ("sparse", sparse)):
+    for i, ranked in enumerate(ranked_lists):
         for rank, chunk in enumerate(ranked):
             key = chunk_id(chunk)
             fused[key] = fused.get(key, 0.0) + 1.0 / (k + rank + 1)
             first_seen.setdefault(key, chunk)
-            ranks.setdefault(key, {})[f"{name}_rank"] = rank + 1
+            ranks.setdefault(key, {})
+            if names is not None:
+                ranks[key][f"{names[i]}_rank"] = rank + 1
     ordered = sorted(fused, key=fused.__getitem__, reverse=True)[:top_k]
     return [
         first_seen[key].model_copy(

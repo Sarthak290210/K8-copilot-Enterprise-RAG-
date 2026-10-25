@@ -7,6 +7,7 @@ from openai import AsyncOpenAI
 from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel
 from qdrant_client import AsyncQdrantClient
+from tavily import AsyncTavilyClient
 from upstash_redis.asyncio import Redis
 
 from app.api.auth import get_pool
@@ -37,6 +38,10 @@ def get_redis(request: Request) -> Redis | None:
 
 def get_llm(request: Request) -> AsyncOpenAI:
     return request.app.state.llm
+
+
+def get_tavily(request: Request) -> AsyncTavilyClient | None:
+    return getattr(request.app.state, "tavily", None)  # None when TAVILY_API_KEY isn't set
 
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
@@ -91,6 +96,22 @@ async def ping_cerebras(client: AsyncOpenAI) -> ServiceStatus:
     return ServiceStatus(service="cerebras", status="up", latency_ms=latency_ms)
 
 
+async def ping_tavily(client: AsyncTavilyClient | None) -> ServiceStatus:
+    """A one-result search: checks reachability + API key. Costs 1 Tavily credit."""
+    if client is None:
+        return ServiceStatus(service="tavily", status="down", error="NotConfigured")
+    start = time.perf_counter()
+    try:
+        await asyncio.wait_for(
+            client.search("kubernetes", max_results=1, search_depth="basic"),
+            timeout=PING_TIMEOUT_SECONDS * 2,  # a real search is slower than a list call
+        )
+    except Exception as exc:
+        return ServiceStatus(service="tavily", status="down", error=type(exc).__name__)
+    latency_ms = round((time.perf_counter() - start) * 1000, 2)
+    return ServiceStatus(service="tavily", status="up", latency_ms=latency_ms)
+
+
 @router.get("/health/postgres", response_model=ServiceStatus)
 async def postgres_health(
     pool: Annotated[AsyncConnectionPool, Depends(get_pool)],
@@ -119,6 +140,13 @@ async def cerebras_health(
     return await ping_cerebras(client)
 
 
+@router.get("/health/tavily", response_model=ServiceStatus)
+async def tavily_health(
+    client: Annotated[AsyncTavilyClient | None, Depends(get_tavily)],
+) -> ServiceStatus:
+    return await ping_tavily(client)
+
+
 @router.get("/health", response_model=HealthReport)
 async def services_health(
     pool: Annotated[AsyncConnectionPool, Depends(get_pool)],
@@ -126,9 +154,14 @@ async def services_health(
     redis: Annotated[Redis | None, Depends(get_redis)],
     llm: Annotated[AsyncOpenAI, Depends(get_llm)],
 ) -> HealthReport:
+    # Tavily is left out on purpose: its ping is a real search (1 credit of 1,000/month), so a
+    # dashboard polling this route would burn the credits. Check it at /admin/health/tavily.
     services = list(
         await asyncio.gather(
-            ping_postgres(pool), ping_qdrant(qdrant), ping_redis(redis), ping_cerebras(llm)
+            ping_postgres(pool),
+            ping_qdrant(qdrant),
+            ping_redis(redis),
+            ping_cerebras(llm),
         )
     )
     overall = "ok" if all(s.status == "up" for s in services) else "degraded"

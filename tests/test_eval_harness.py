@@ -1,11 +1,11 @@
 """Tests for the eval modules: profiles, invokers, post-checks, reporting, diff, record, runner."""
 
-from types import SimpleNamespace
 from typing import cast
 
 import pytest
 from ragas.dataset_schema import SingleTurnSample
 
+from app.models import ChatResponse, CRAGEvaluation, ResponseMetadata, RetrievedChunk
 from eval import ragas_adapter, record
 from eval.diff import diff_results, row_passed
 from eval.invokers import ServiceInvoker, SkippedIntent
@@ -18,6 +18,7 @@ from eval.run_ragas import (
     collect_rows,
     load_checkpoint,
     needs_scoring,
+    pipeline_settings,
     save_checkpoint,
     score_rows,
     select_goldens,
@@ -50,8 +51,8 @@ def test_profiles_cover_plan():
         "sparse_only",
         "hybrid",
         "hybrid+rerank",
-        "hybrid+rerank+hyde",
-        "hybrid+rerank+crag",
+        "hybrid+hyde",
+        "hybrid+crag",
         "all",
     }
     assert get_profile("naive") == {
@@ -62,7 +63,10 @@ def test_profiles_cover_plan():
         "enable_crag": False,
         "enable_self_reflective": False,
     }
-    assert all(get_profile("all")[k] for k in ("enable_rerank", "enable_hyde", "enable_crag"))
+    full = get_profile("all")
+    assert all(full[k] for k in ("enable_hyde", "enable_crag", "enable_self_reflective"))
+    # Phase 3 builds on hybrid without rerank (E2: reranking hurt on this corpus).
+    assert full["search_mode"] == "hybrid" and not full["enable_rerank"]
 
 
 def test_get_profile_returns_a_copy():
@@ -107,13 +111,11 @@ async def test_collect_rows_records_skips_and_errors():
                 raise SkippedIntent("not yet")
             if question == goldens[1].question:
                 raise RuntimeError("boom")
-            chunk = SimpleNamespace(
-                text="Pods are the smallest deployable units.", source="pods.html"
+            source = "seed/docs/true_data/" + goldens[2].golden_sources[0]
+            chunk = RetrievedChunk(
+                text="Pods are the smallest deployable units.", source=source, score=0.9
             )
-            response = SimpleNamespace(
-                answer="A pod...", sources=["seed/docs/true_data/" + goldens[2].golden_sources[0]]
-            )
-            return response, [chunk]
+            return ChatResponse(answer="A pod...", sources=[source]), [chunk]
 
     rows, skipped, errors = await collect_rows(goldens, {}, FakeInvoker())  # type: ignore[arg-type]
     assert skipped == [{"id": goldens[0].id, "reason": "not yet"}]
@@ -124,6 +126,35 @@ async def test_collect_rows_records_skips_and_errors():
     )
 
 
+async def test_collect_rows_maps_web_results_to_tavily_web_and_keeps_trace():
+    golden = next(g for g in load_goldens() if g.demonstrates_feature == "crag")
+    web = RetrievedChunk(
+        text="Sunny.",
+        source="https://weather.example/seattle",
+        score=0.8,
+        metadata={"origin": "web"},
+    )
+
+    class FakeInvoker:
+        async def invoke(self, question, flags, intent):
+            response = ChatResponse(
+                answer="Sunny [1]",
+                sources=[web.source],
+                confidence=0.4,
+                metadata=ResponseMetadata(
+                    tokens_used=1234,
+                    crag=CRAGEvaluation(action="incorrect", max_score=0.1, web_used=True),
+                ),
+            )
+            return response, [web]
+
+    rows, _, _ = await collect_rows([golden], {}, FakeInvoker())  # type: ignore[arg-type]
+    assert rows[0]["context_sources"] == ["tavily_web"]
+    assert rows[0]["source_overlap"]["overlap"] == 1.0  # golden_sources == ["tavily_web"]
+    assert rows[0]["crag_action"] == "incorrect"
+    assert rows[0]["tokens_used"] == 1234 and rows[0]["confidence"] == 0.4
+
+
 async def test_collect_rows_reuses_done_rows_and_reports_each_new_one():
     goldens = [g for g in load_goldens() if g.intent == "rag"][:3]
     asked = []
@@ -131,7 +162,7 @@ async def test_collect_rows_reuses_done_rows_and_reports_each_new_one():
     class FakeInvoker:
         async def invoke(self, question, flags, intent):
             asked.append(question)
-            return SimpleNamespace(answer="a", sources=[]), []
+            return ChatResponse(answer="a"), []
 
     done = {goldens[0].id: {"id": goldens[0].id, "answer": "cached"}}
     progress = []
@@ -380,3 +411,17 @@ def test_relevancy_strictness_comes_from_settings(monkeypatch):
     assert relevancy.strictness == 1
     assert ragas_adapter.answer_relevancy.strictness == 3  # Ragas' shared instance untouched
     assert relevancy.name == "answer_relevancy"
+
+
+def test_pipeline_settings_change_the_checkpoint_key(monkeypatch, tmp_path):
+    """Resuming after a CRAG/Self-RAG/grader setting changed must not mix two configurations."""
+    from app.config import settings
+
+    path = tmp_path / "ckpt.json"
+    key = {"profile": "all", "pipeline": pipeline_settings()}
+    save_checkpoint(path, key, [{"id": "q-001"}])
+    monkeypatch.setattr(settings, "crag_relevance_threshold", 0.9)
+    assert load_checkpoint(path, {"profile": "all", "pipeline": pipeline_settings()}) == {}
+    assert {"grader_model", "crag_relevance_threshold", "reflection_min_score"} <= set(
+        pipeline_settings()
+    )

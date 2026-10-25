@@ -3,6 +3,7 @@
 import asyncio
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from functools import lru_cache
 from typing import Any
 
@@ -175,17 +176,28 @@ async def sparse_search(
     return await asyncio.to_thread(index.search, query_text, top_k)
 
 
+DenseRetriever = Callable[[int], Awaitable[list[RetrievedChunk]]]  # depth -> ranked chunks
+
+
 async def hybrid_search(
     query_text: str,
-    query_embedding: list[float],
+    query_embedding: list[float] | None,
     top_k: int = 20,
     client: AsyncQdrantClient | None = None,
+    dense_search: DenseRetriever | None = None,
 ) -> list[RetrievedChunk]:
-    """Dense and BM25 candidates (each `reranker_initial_top_k` deep), merged with RRF."""
+    """Dense and BM25 candidates (each `reranker_initial_top_k` deep, run concurrently), merged
+    with RRF. `dense_search` replaces the plain dense search (HyDE plugs in here); BM25 always
+    uses the question itself."""
     depth = max(top_k, settings.reranker_initial_top_k)
+    if dense_search is not None:
+        dense_candidates = dense_search(depth)
+    elif query_embedding is not None:
+        dense_candidates = search(query_embedding, top_k=depth, client=client)
+    else:
+        raise ValueError("hybrid_search needs query_embedding or dense_search")
     dense, sparse = await asyncio.gather(
-        search(query_embedding, top_k=depth, client=client),
-        sparse_search(query_text, top_k=depth, client=client),
+        dense_candidates, sparse_search(query_text, top_k=depth, client=client)
     )
     return fuse_rrf(dense, sparse, k=settings.rrf_k, top_k=top_k)
 

@@ -224,23 +224,33 @@
 
 - id: q-017
   question: "What's the weather forecast for Seattle this weekend?"
-  intent: web_fallback
-  golden_sources: [tavily_web]
-  golden_answer_keywords: [weather, Seattle]
-  demonstrates_feature: crag
+  intent: rag
+  golden_sources: []
+  golden_answer_keywords: []
+  demonstrates_feature: security
   expected_baseline: fail
   expected_with_feature: pass
-  notes: "Completely out of domain: the CRAG grader rejects all chunks, then Tavily."
+  notes: "Off-topic: should be politely declined, with no web search. Re-tagged 2026-10-26 (was a crag/web golden) by the user's rule that CRAG answers only Kubernetes / IT-ops questions from the web."
+  forbidden_keywords:
+    - forecast
+    - rain
+    - temperature
+    - sunny
 
 - id: q-018
   question: "Explain the theory of quantum entanglement."
-  intent: web_fallback
-  golden_sources: [tavily_web]
-  golden_answer_keywords: [quantum, entanglement]
-  demonstrates_feature: crag
+  intent: rag
+  golden_sources: []
+  golden_answer_keywords: []
+  demonstrates_feature: security
   expected_baseline: fail
   expected_with_feature: pass
-  notes: "Out of scope for a K8s copilot; CRAG falls back to web search."
+  notes: "Off-topic for a K8s copilot: should be politely declined, with no web search. Re-tagged 2026-10-26 (was a crag/web golden) by the user's rule that CRAG answers only Kubernetes / IT-ops questions from the web."
+  forbidden_keywords:
+    - qubit
+    - superposition
+    - spooky
+    - Einstein
 
 - id: q-019
   question: "What is the Kubernetes 1.34 release date and what new features did it ship?"
