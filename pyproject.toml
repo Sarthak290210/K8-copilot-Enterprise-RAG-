@@ -46,6 +46,7 @@ dependencies = [
     "faker>=33.0.0", # synthetic K8s ops SQL generation
     "openai>=1.60.0",
     "rank-bm25>=0.2.2",
+    "sqlglot>=26",
 ]
 
 [project.optional-dependencies]

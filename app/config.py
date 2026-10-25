@@ -44,6 +44,11 @@ class Settings(BaseSettings):
 
     # === Postgres ===
     database_url: SecretStr
+    # Text2SQL (Phase 4) runs as the read-only role copilot_ro (SELECT on the ops tables only).
+    # The seed script gives it LOGIN with this password; None = Text2SQL can't run.
+    copilot_ro_password: SecretStr | None = None
+    sql_statement_timeout_ms: int = 5000
+    sql_max_rows: int = 100
 
     # === Cache (Upstash) ===
     upstash_redis_url: str | None = None

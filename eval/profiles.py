@@ -22,6 +22,9 @@ PROFILES: dict[str, Flags] = {
     # corpus (user's choice, 2026-10-23; plan.md's names had +rerank).
     "hybrid+hyde": _BASE | {"search_mode": "hybrid", "enable_hyde": True},
     "hybrid+crag": _BASE | {"search_mode": "hybrid", "enable_crag": True},
+    # The shipped defaults since E3 (user's choice): E4-E6 use this profile (2026-10-26).
+    # Spelled out, not read from settings, so a changed .env can't change what's measured.
+    "defaults": _BASE | {"search_mode": "hybrid", "enable_crag": True},
     "all": _BASE
     | {
         "search_mode": "hybrid",

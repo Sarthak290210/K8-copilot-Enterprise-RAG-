@@ -1,5 +1,6 @@
 """Shapes of the data moving through the system (requests, retrieved chunks, answers)."""
 
+import uuid
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -74,6 +75,17 @@ class ResponseMetadata(BaseModel):
     reflection_iterations: int = 0  # extra answer attempts made by Self-RAG
     reflection_score: float | None = None
     refined_question: str | None = None  # the question the returned answer was written for
+    generated_sql: str | None = None  # Phase 4: the SQL that ran (sql / hybrid intents)
+    sql_row_count: int | None = None
+
+
+class PendingSQLBlock(BaseModel):
+    """SQL waiting for a human: the agent paused before running it (Phase 4)."""
+
+    query_id: uuid.UUID  # the paused run (LangGraph thread); send it to /query/sql/execute
+    sql: str
+    explanation: str = ""
+    intent: str = "sql"
 
 
 class ChatResponse(BaseModel):
@@ -84,6 +96,8 @@ class ChatResponse(BaseModel):
     confidence: float | None = None  # set by real graders from Phase 3; never hard-coded
     chunks: list[RetrievedChunkPreview] = Field(default_factory=list)
     metadata: ResponseMetadata = Field(default_factory=ResponseMetadata)
+    query_id: uuid.UUID | None = None  # the agent run this answer belongs to
+    pending_sql: PendingSQLBlock | None = None  # set when the SQL needs approval first
 
 
 class QueryFlags(BaseModel):
@@ -115,3 +129,11 @@ class QueryFlags(BaseModel):
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     flags: QueryFlags | None = None  # e.g. {"search_mode": "hybrid", "top_k": 5}
+
+
+class SqlExecuteRequest(BaseModel):
+    """Approve (optionally with edited SQL) or reject the SQL of a paused run."""
+
+    query_id: uuid.UUID
+    approved: bool
+    edited_sql: str | None = Field(default=None, max_length=10_000)

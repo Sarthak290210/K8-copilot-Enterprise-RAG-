@@ -3,12 +3,14 @@ from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from loguru import logger
 from psycopg import AsyncConnection
 from psycopg_pool import AsyncConnectionPool
 
 from app.api import admin, auth, documents, query
 from app.config import settings
+from app.core.graph import build_graph
 from app.middleware.rate_limiter import get_redis_client
 from app.services import llm_service, vector_store, web_search
 
@@ -33,7 +35,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         await pool.open(wait=True, timeout=10)
         stack.push_async_callback(pool.close)
         await auth.ensure_users_table(pool)
+        await query.ensure_query_threads_table(pool)
         app.state.db_pool = pool
+
+        # Agent graph (Phase 4) with a Postgres checkpointer: a run paused for SQL approval
+        # survives until POST /query/sql/execute resumes it (setup() creates its tables).
+        checkpointer = await stack.enter_async_context(
+            AsyncPostgresSaver.from_conn_string(settings.database_url.get_secret_value())
+        )
+        await checkpointer.setup()
+        app.state.graph = build_graph(checkpointer)
 
         # Shared with the services (vector_store / llm_service own the cached clients).
         app.state.qdrant = vector_store.get_client()

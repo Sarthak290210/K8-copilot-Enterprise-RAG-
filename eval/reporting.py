@@ -25,6 +25,10 @@ def aggregate(
     summary["source_overlap"] = _mean([row["source_overlap"]["overlap"] for row in rows])
     summary["forbidden_violations"] = sum(not row["forbidden"]["passed"] for row in rows)
     summary["latency_ms"] = _mean([row["latency_ms"] for row in rows])
+    # Phase 4 (agent rows only; older result files don't have these keys)
+    matches = [row["intent_match"] for row in rows if row.get("intent_match") is not None]
+    summary["intent_accuracy"] = round(sum(matches) / len(matches), 3) if matches else None
+    summary["sql_keyword_match_rate"] = _mean([row.get("sql_keyword_match") for row in rows])
     return summary
 
 
@@ -59,6 +63,8 @@ def print_table(payload: dict[str, Any]) -> None:
         + " | ".join(f"{k} {_fmt(agg[k])}" for k in METRIC_KEYS)
         + f" | source_overlap {_fmt(agg['source_overlap'])}"
         + f" | forbidden {agg['forbidden_violations']} | latency_ms {_fmt(agg['latency_ms'])}"
+        + f" | intent_accuracy {_fmt(agg.get('intent_accuracy'))}"
+        + f" | sql_keyword_match {_fmt(agg.get('sql_keyword_match_rate'))}"
     )
     if payload["skipped"]:
         reasons = sorted({s["reason"] for s in payload["skipped"]})

@@ -55,3 +55,27 @@ def source_overlap(actual: list[str], golden: list[str]) -> dict[str, Any]:
     actual_norm = {_norm(s) for s in actual}
     matched = [s for s in golden if _norm(s) in actual_norm]
     return {"overlap": round(len(matched) / len(golden), 3), "matched": matched}
+
+
+DB_INTENTS = ("sql", "hybrid")
+
+
+def expected_intent(golden_intent: str) -> str:
+    """What the router should say: sql / hybrid as tagged; everything else (rag, web_fallback)
+    is a docs question."""
+    return golden_intent if golden_intent in DB_INTENTS else "rag"
+
+
+def intent_match(golden_intent: str, predicted: str | None) -> bool:
+    return predicted == expected_intent(golden_intent)
+
+
+def sql_keyword_match(
+    golden_intent: str, keywords: list[str], answer: str, generated_sql: str | None
+) -> float | None:
+    """For sql / hybrid goldens: fraction of the golden keywords found in the generated SQL or
+    the answer (case-insensitive). None for other goldens or when there are no keywords."""
+    if golden_intent not in DB_INTENTS or not keywords:
+        return None
+    haystack = f"{generated_sql or ''} {answer}".lower()
+    return round(sum(k.lower() in haystack for k in keywords) / len(keywords), 3)

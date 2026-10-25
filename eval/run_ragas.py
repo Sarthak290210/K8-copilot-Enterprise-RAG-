@@ -13,6 +13,7 @@ import argparse
 import asyncio
 import json
 import subprocess
+import sys
 import time
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -23,12 +24,14 @@ from loguru import logger
 
 from app.config import settings
 from app.services.web_search import is_web_chunk
-from eval.invokers import Invoker, ServiceInvoker, SkippedIntent
+from eval.invokers import AgentInvoker, Invoker, ServiceInvoker, SkippedIntent
 from eval.post_checks import (
     ID_METRICS,
     forbidden_keywords_check,
     id_context_scores,
+    intent_match,
     source_overlap,
+    sql_keyword_match,
 )
 from eval.profiles import get_profile
 from eval.reporting import aggregate, print_table
@@ -139,6 +142,17 @@ async def collect_rows(
                 "reflection_iterations": response.metadata.reflection_iterations,
                 "hyde_hypotheses": response.metadata.hyde_hypotheses,
                 "refined_question": response.metadata.refined_question,
+                # Phase 4: routing and Text2SQL
+                "predicted_intent": response.metadata.intent,
+                "intent_match": intent_match(golden.intent, response.metadata.intent),
+                "generated_sql": response.metadata.generated_sql,
+                "sql_rows_count": response.metadata.sql_row_count,
+                "sql_keyword_match": sql_keyword_match(
+                    golden.intent,
+                    golden.golden_answer_keywords,
+                    response.answer,
+                    response.metadata.generated_sql,
+                ),
             }
         )
         if on_row is not None:
@@ -151,12 +165,17 @@ async def _collect_and_close(
     flags: dict[str, Any],
     done: dict[str, dict[str, Any]],
     on_row: Callable[[list[dict[str, Any]]], None],
+    rag_only: bool = False,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    """Ask all goldens in one event loop, then close the shared clients (they're loop-bound)."""
+    """Ask all goldens in one event loop, then close the shared clients (they're loop-bound).
+
+    Default: the Phase 4 agent (routing + Text2SQL, SQL auto-approved); rag_only: the RAG
+    pipeline alone (sql/hybrid goldens are skipped), as in E1-E3."""
     from app.services import llm_service, vector_store, web_search
 
     try:
-        return await collect_rows(goldens, flags, ServiceInvoker(), done, on_row)
+        invoker = ServiceInvoker() if rag_only else AgentInvoker()
+        return await collect_rows(goldens, flags, invoker, done, on_row)
     finally:
         await llm_service.get_client().close()
         await vector_store.get_client().close()
@@ -246,6 +265,11 @@ def main() -> None:
         "--fresh", action="store_true", help="ignore any checkpoint and start from scratch"
     )
     parser.add_argument(
+        "--rag-only",
+        action="store_true",
+        help="RAG pipeline only, no agent/routing (the E1-E3 path; sql/hybrid goldens skipped)",
+    )
+    parser.add_argument(
         "--allow-errors",
         action="store_true",
         help="write the result even if some questions errored (they're listed in it)",
@@ -265,12 +289,17 @@ def main() -> None:
         "filter": args.feature,
         "answer_model": settings.llm_model_answer,
         "pipeline": pipeline_settings(),
+        "invoker": "rag_only" if args.rag_only else "agent",
     }
     ckpt = checkpoint_path(args.profile, args.feature)
     done = {} if args.fresh else load_checkpoint(ckpt, key)
 
     rows, skipped, errors = asyncio.run(
-        _collect_and_close(goldens, flags, done, lambda r: save_checkpoint(ckpt, key, r))
+        _collect_and_close(
+            goldens, flags, done, lambda r: save_checkpoint(ckpt, key, r), args.rag_only
+        ),
+        # async psycopg (Text2SQL) can't use Windows' default Proactor loop
+        loop_factory=asyncio.SelectorEventLoop if sys.platform == "win32" else None,
     )
     save_checkpoint(ckpt, key, rows)
     try:
@@ -311,6 +340,7 @@ def main() -> None:
         "answer_relevancy_strictness": settings.eval_relevancy_strictness,
         "answer_model": settings.llm_model_answer,
         "pipeline": pipeline_settings(),
+        "invoker": "rag_only" if args.rag_only else "agent",
         "rows": rows,
         "skipped": skipped,
         "errors": errors,
