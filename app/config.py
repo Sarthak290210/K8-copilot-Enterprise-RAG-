@@ -58,9 +58,17 @@ class Settings(BaseSettings):
     cache_ttl_sql_gen: int = 86400  # 24 hours
     cache_ttl_sql_result: int = 900  # 15 min
     cache_ttl_intent: int = 86400  # 24 hours
+    # Phase 5: false = every tier is skipped (e.g. to eval retrieval changes without cached
+    # answers). Each process also keeps an in-memory copy in front of Redis (user's choice
+    # 2026-10-26: a warm answer in < 100 ms; Redis alone costs ~44 ms per lookup).
+    cache_enabled: bool = True
+    cache_memory_max_entries: int = 1000
+    # Blended gpt-oss-120b price (~$0.35/M in, $0.75/M out) for metadata.cost_saved_usd.
+    llm_cost_per_million_tokens: float = 0.5
 
     # === Doc dedup ===
     storage_backend: Literal["local", "s3"] = "local"
+    local_storage_dir: str = "./cache"
     s3_cache_bucket: str = "adv-rag-cache"
     aws_region: str = "us-east-1"
 

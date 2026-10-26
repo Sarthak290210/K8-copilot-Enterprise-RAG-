@@ -57,5 +57,11 @@ class AgentInvoker(Invoker):
         query_id = uuid.uuid4()
         result = await run_agent(self.graph, question, flags, query_id)
         if result.pending:
+            before = result.response.metadata
             result = await resume_agent(self.graph, query_id, approved=True)
+            # One question, two calls: report the cache hits/savings of both.
+            meta = result.response.metadata
+            for tier, hit in before.cache_hits.items():
+                meta.cache_hits[tier] = meta.cache_hits.get(tier, False) or hit
+            meta.cost_saved_usd = round(meta.cost_saved_usd + before.cost_saved_usd, 6)
         return result.response, result.chunks

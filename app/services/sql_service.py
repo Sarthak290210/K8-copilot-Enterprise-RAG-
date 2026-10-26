@@ -27,6 +27,7 @@ from sqlglot.errors import SqlglotError
 
 from app.config import settings
 from app.services import llm_service
+from app.services.query_cache_service import note_tokens_saved, query_cache
 
 OPS_TABLES = ("clusters", "nodes", "deployments", "pods", "incidents", "alerts", "oncall_logs")
 
@@ -249,10 +250,18 @@ class SQLService:
 
     async def generate_sql(self, question: str) -> dict[str, Any]:
         """{"sql", "explanation", "tokens_used"}. Retries once with the error if the first
-        query isn't a safe SELECT; raises SQLGenerationError if the retry fails too."""
-        system = SQL_SYSTEM_PROMPT.format(
-            max_rows=settings.sql_max_rows, schema=await self.schema_context()
-        )
+        query isn't a safe SELECT; raises SQLGenerationError if the retry fails too.
+
+        Cached per normalised question, today's date and the schema prompt (sql_gen tier; a hit
+        costs 0 tokens and is re-checked). The human approval step still happens for a cached
+        query (it's in the graph)."""
+        schema = await self.schema_context()
+        cache_context = f"{dt.date.today().isoformat()}\n{schema}"
+        hit = await query_cache.get_sql_generation(question, cache_context)
+        if hit is not None and is_select_only(hit["sql"]):
+            note_tokens_saved(hit.get("tokens_used", 0))
+            return {**hit, "tokens_used": 0}
+        system = SQL_SYSTEM_PROMPT.format(max_rows=settings.sql_max_rows, schema=schema)
         user = f"Question: {question}"
         tokens = 0
         for attempt in (1, 2):
@@ -268,7 +277,9 @@ class SQLService:
                 query = str(result["data"].get("sql") or "").strip().rstrip(";").strip()
                 if query and is_select_only(query):
                     explanation = str(result["data"].get("explanation") or "")[:500]
-                    return {"sql": query, "explanation": explanation, "tokens_used": tokens}
+                    generated = {"sql": query, "explanation": explanation, "tokens_used": tokens}
+                    await query_cache.set_sql_generation(question, generated, cache_context)
+                    return generated
                 problem = "the query was not a single SELECT over the listed tables"
             logger.info("SQL generation attempt {} rejected: {}", attempt, problem)
             user = (
@@ -279,9 +290,12 @@ class SQLService:
         )
 
     async def execute_sql(self, query: str) -> list[dict[str, Any]]:
-        """Run an approved query as copilot_ro: re-checked, read-only, timed out, row-capped."""
+        """Run an approved query as copilot_ro: re-checked, read-only, timed out, row-capped.
+        Rows are cached per normalised SQL for CACHE_TTL_SQL_RESULT (15 min)."""
         if not is_select_only(query):
             raise SQLGenerationError("Refusing to run: not a single read-only SELECT")
+        if (cached := await query_cache.get_sql_result(query)) is not None:
+            return cached
         async with await AsyncConnection.connect(readonly_conninfo()) as conn:
             await conn.set_read_only(True)
             async with conn.transaction():
@@ -295,7 +309,9 @@ class SQLService:
                 async with conn.cursor(row_factory=dict_row) as cursor:
                     await cursor.execute(cast(LiteralString, query))
                     rows = await cursor.fetchmany(settings.sql_max_rows)
-        return [_serialize_row(row) for row in rows]
+        result = [_serialize_row(row) for row in rows]
+        await query_cache.set_sql_result(query, result)
+        return result
 
 
 @lru_cache

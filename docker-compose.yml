@@ -59,6 +59,9 @@ services:
       # The doc dataset (incl. the 801 MB noisy_data, excluded from the image) is read
       # from the host, read-only, so seeding inside Docker can't modify it.
       - ./seed/docs:/app/seed/docs:ro
+      # Doc-dedup records (Phase 5, LOCAL_STORAGE_DIR=./cache): shared with `make seed` on the
+      # host, so a file seeded there isn't re-ingested by an upload here (and vice versa).
+      - ./cache:/app/cache
     depends_on:
       postgres:
         condition: service_healthy

@@ -26,3 +26,6 @@ docker-compose.yml
 
 # Dataset: kept on disk, mounted read-only by compose instead of copied into the image
 seed/docs/noisy_data
+
+# Phase 5 doc-dedup records (mounted at runtime, never baked into the image)
+cache/

@@ -23,6 +23,7 @@ from typing import Any
 from loguru import logger
 
 from app.config import settings
+from app.services.rag_service import pipeline_settings
 from app.services.web_search import is_web_chunk
 from eval.invokers import AgentInvoker, Invoker, ServiceInvoker, SkippedIntent
 from eval.post_checks import (
@@ -63,9 +64,17 @@ def select_goldens(goldens: list[Golden], feature: str | None) -> list[Golden]:
     return [g for g in goldens if g.demonstrates_feature in (feature, "baseline")]
 
 
-def checkpoint_path(profile: str, feature: str | None) -> Path:
+def checkpoint_path(profile: str, feature: str | None, cache_mode: str = "on") -> Path:
+    """One file per profile/filter, and per cache mode: E5's cold run (cache cleared first) and
+    a --no-cache run never resume, or get resumed by, a normal (warm) run."""
     name = profile if feature is None else f"{profile}_{feature}"
+    if cache_mode != "on":
+        name = f"{name}_{cache_mode}"
     return CHECKPOINT_DIR / f"{name.replace('+', '-')}.json"
+
+
+def cache_mode(clear_cache: bool, no_cache: bool) -> str:
+    return "off" if no_cache else "cold" if clear_cache else "on"
 
 
 def load_checkpoint(path: Path, key: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -153,6 +162,9 @@ async def collect_rows(
                     response.answer,
                     response.metadata.generated_sql,
                 ),
+                # Phase 5: which cache tiers answered, and the LLM spend they skipped.
+                "cache_hits": dict(response.metadata.cache_hits),
+                "cost_saved_usd": response.metadata.cost_saved_usd,
             }
         )
         if on_row is not None:
@@ -166,46 +178,39 @@ async def _collect_and_close(
     done: dict[str, dict[str, Any]],
     on_row: Callable[[list[dict[str, Any]]], None],
     rag_only: bool = False,
+    clear_cache: bool = False,
+    cache_report: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     """Ask all goldens in one event loop, then close the shared clients (they're loop-bound).
 
     Default: the Phase 4 agent (routing + Text2SQL, SQL auto-approved); rag_only: the RAG
-    pipeline alone (sql/hybrid goldens are skipped), as in E1-E3."""
+    pipeline alone (sql/hybrid goldens are skipped), as in E1-E3. clear_cache empties every
+    cache tier (Redis + memory) first: E5's cold run. `cache_report` receives this process's
+    per-tier cache stats (the API's /admin/cache/stats can't see an in-process eval)."""
+    from app.middleware import rate_limiter
     from app.services import llm_service, vector_store, web_search
+    from app.services.query_cache_service import query_cache
 
     try:
+        if clear_cache:
+            logger.info("Cache cleared before the run: {}", await query_cache.clear())
         invoker = ServiceInvoker() if rag_only else AgentInvoker()
         return await collect_rows(goldens, flags, invoker, done, on_row)
     finally:
+        if cache_report is not None:
+            cache_report.update(query_cache.stats())
         await llm_service.get_client().close()
         await vector_store.get_client().close()
         tavily = web_search.get_client()
         if tavily is not None:
             await tavily.close()
+        redis = rate_limiter.get_redis_client()
+        if redis is not None:
+            await redis.close()
         llm_service.get_client.cache_clear()
         vector_store.get_client.cache_clear()
         web_search.get_client.cache_clear()
-
-
-def pipeline_settings() -> dict[str, Any]:
-    """Settings that change the answers (beyond the profile flags and the answer model).
-
-    Part of the checkpoint key, so resuming after one of them changed starts the answers over
-    instead of mixing two configurations in one result file; also recorded in the result.
-    """
-    return {
-        "grader_model": settings.llm_model_grader,
-        "reasoning_effort": settings.llm_reasoning_effort,
-        "rrf_k": settings.rrf_k,
-        "reranker_model": settings.reranker_model,
-        "reranker_max_length": settings.reranker_max_length,
-        "reranker_initial_top_k": settings.reranker_initial_top_k,
-        "hyde_num_hypotheses": settings.hyde_num_hypotheses,
-        "crag_relevance_threshold": settings.crag_relevance_threshold,
-        "crag_ambiguous_threshold": settings.crag_ambiguous_threshold,
-        "reflection_min_score": settings.reflection_min_score,
-        "max_reflection_retries": settings.max_reflection_retries,
-    }
+        rate_limiter.get_redis_client.cache_clear()
 
 
 def needs_scoring(row: dict[str, Any], judge_model: str) -> bool:
@@ -269,6 +274,17 @@ def main() -> None:
         action="store_true",
         help="RAG pipeline only, no agent/routing (the E1-E3 path; sql/hybrid goldens skipped)",
     )
+    cache = parser.add_mutually_exclusive_group()
+    cache.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="empty every cache tier (Redis + memory) before asking: a cold run (E5)",
+    )
+    cache.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="skip the cache entirely (to measure retrieval/answer changes, not cached answers)",
+    )
     parser.add_argument(
         "--allow-errors",
         action="store_true",
@@ -276,6 +292,8 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    if args.no_cache:
+        settings.cache_enabled = False
     flags = get_profile(args.profile)
     goldens = select_goldens(load_goldens(args.questions), args.feature)
     judge_model = args.judge_model or settings.eval_judge_model
@@ -290,13 +308,25 @@ def main() -> None:
         "answer_model": settings.llm_model_answer,
         "pipeline": pipeline_settings(),
         "invoker": "rag_only" if args.rag_only else "agent",
+        "cache": cache_mode(args.clear_cache, args.no_cache),
     }
-    ckpt = checkpoint_path(args.profile, args.feature)
+    ckpt = checkpoint_path(args.profile, args.feature, key["cache"])
     done = {} if args.fresh else load_checkpoint(ckpt, key)
+    if args.clear_cache and done:
+        # Resuming a cold run: the cache was cleared when it started, and clearing it again
+        # would delete the answers the rows so far cached (E5's warm run needs them).
+        logger.info("Resuming a cold run: cache not cleared again")
 
+    cache_stats: dict[str, Any] = {}
     rows, skipped, errors = asyncio.run(
         _collect_and_close(
-            goldens, flags, done, lambda r: save_checkpoint(ckpt, key, r), args.rag_only
+            goldens,
+            flags,
+            done,
+            lambda r: save_checkpoint(ckpt, key, r),
+            args.rag_only,
+            clear_cache=args.clear_cache and not done,
+            cache_report=cache_stats,
         ),
         # async psycopg (Text2SQL) can't use Windows' default Proactor loop
         loop_factory=asyncio.SelectorEventLoop if sys.platform == "win32" else None,
@@ -341,6 +371,13 @@ def main() -> None:
         "answer_model": settings.llm_model_answer,
         "pipeline": pipeline_settings(),
         "invoker": "rag_only" if args.rag_only else "agent",
+        # Phase 5: cache state of this run (stats count only the questions asked this time;
+        # rows reused from a checkpoint keep their own cache_hits).
+        "cache": {
+            "enabled": settings.cache_enabled,
+            "cleared_before_run": args.clear_cache,
+            "stats": cache_stats,
+        },
         "rows": rows,
         "skipped": skipped,
         "errors": errors,

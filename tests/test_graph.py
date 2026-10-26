@@ -1,5 +1,6 @@
 """The Phase 4 agent graph with an in-memory checkpointer and every service mocked."""
 
+import datetime as dt
 import uuid
 
 import pytest
@@ -186,3 +187,58 @@ async def test_no_note_for_non_zero_or_absolute_queries(fakes, graph):
     await agent.run_agent(graph, "How many P1 incidents?", None, qid)
     result = await agent.resume_agent(graph, qid, approved=True)
     assert "fleet data ends" not in result.response.answer
+
+
+# ---------------- Phase 5: caches through the agent ----------------
+
+
+async def test_repeat_rag_question_reports_intent_and_answer_hits(
+    fakes, graph, monkeypatch, cache_on
+):
+    from app.models import ChatResponse as Response
+    from app.services import query_cache_service
+
+    fakes["intent"] = "rag"
+
+    async def classify_intent(question):  # the real router's cache path, with a fake LLM
+        if (hit := await cache_on.get_intent(question)) is not None:
+            query_cache_service.note_tokens_saved(hit["tokens"])
+            return hit["intent"], 0
+        await cache_on.set_intent(question, "rag", 10)
+        return "rag", 10
+
+    async def run_rag_with_trace(question, flags):
+        hit = await cache_on.get_rag_answer(question, {})
+        if hit is not None:
+            query_cache_service.note_tokens_saved(100)
+            return Response.model_validate(hit["response"]), []
+        response = Response(
+            answer="A StatefulSet is ...", metadata=ResponseMetadata(tokens_used=100)
+        )
+        await cache_on.set_rag_answer(question, {}, {"response": response.model_dump(mode="json")})
+        return response, []
+
+    monkeypatch.setattr(agent, "classify_intent", classify_intent)
+    monkeypatch.setattr(agent.rag_service, "run_rag_with_trace", run_rag_with_trace)
+    first = await agent.run_agent(graph, "What is a StatefulSet?", None, uuid.uuid4())
+    assert first.response.metadata.cache_hits == {"intent": False, "rag_answer": False}
+    second = await agent.run_agent(graph, "What is a StatefulSet?", None, uuid.uuid4())
+    meta = second.response.metadata
+    assert meta.cache_hits == {"intent": True, "rag_answer": True}
+    assert meta.cost_saved_usd == pytest.approx(110 * 0.5 / 1e6)
+
+
+async def test_cached_sql_still_waits_for_approval(fakes, graph, monkeypatch, cache_on):
+    from app.services.sql_service import SQLService
+
+    real = SQLService()  # its generate_sql reads the cache before any LLM call
+    real._schema = "Current date: 2026-10-26\n\nTables:\n- incidents(...)"  # no DB needed
+    monkeypatch.setattr(agent, "get_sql_service", lambda: real)
+    cached = {"sql": fakes["sql"], "explanation": "counts", "tokens_used": 20}
+    context = f"{dt.date.today().isoformat()}\n{real._schema}"  # the key generate_sql uses
+    await cache_on.set_sql_generation("How many P1 incidents?", cached, context)
+    result = await agent.run_agent(graph, "How many P1 incidents?", None, uuid.uuid4())
+    pending = result.response.pending_sql
+    assert result.pending and pending is not None and pending.sql == fakes["sql"]
+    assert result.response.metadata.cache_hits == {"sql_gen": True}
+    assert fakes["executed"] == []  # nothing ran: the human still approves a cached query

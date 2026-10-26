@@ -8,6 +8,7 @@ Every feature is a flag (see DEFAULT_FLAGS), so each can be measured on and off:
 """
 
 import asyncio
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -28,6 +29,7 @@ from app.services import embedding_service, llm_service, vector_store
 from app.services.crag import crag_pipeline
 from app.services.hyde import HyDERetriever
 from app.services.passages import format_passages
+from app.services.query_cache_service import cache_scope, note_tokens_saved, query_cache
 from app.services.reranking import get_reranker
 from app.services.self_reflective import refine_question, reflect_on_answer, should_regenerate
 
@@ -178,6 +180,58 @@ def _no_context_answer(crag: CRAGEvaluation | None) -> str:
     return NOT_FOUND_ANSWER
 
 
+# Bump when a prompt or the pipeline changes in a way that changes answers: old cached answers
+# then stop matching (they expire within CACHE_TTL_RAG anyway).
+RAG_CACHE_VERSION = 2  # 2: the key gained pipeline_settings(); model-written declines skipped
+
+
+def pipeline_settings() -> dict[str, Any]:
+    """Settings that change the answers (beyond the request flags and the answer model).
+
+    Part of the rag_answer cache key, so changing one in .env never serves answers built under
+    the old value; the eval also puts it in its checkpoint key and result file.
+    """
+    return {
+        "grader_model": settings.llm_model_grader,
+        "reasoning_effort": settings.llm_reasoning_effort,
+        "rrf_k": settings.rrf_k,
+        "reranker_model": settings.reranker_model,
+        "reranker_max_length": settings.reranker_max_length,
+        "reranker_initial_top_k": settings.reranker_initial_top_k,
+        "hyde_num_hypotheses": settings.hyde_num_hypotheses,
+        "crag_relevance_threshold": settings.crag_relevance_threshold,
+        "crag_ambiguous_threshold": settings.crag_ambiguous_threshold,
+        "reflection_min_score": settings.reflection_min_score,
+        "max_reflection_retries": settings.max_reflection_retries,
+    }
+
+
+def _cache_context(flags_used: dict[str, Any]) -> dict[str, Any]:
+    """Everything besides the question that changes the answer: every flag (search_mode,
+    rerank, HyDE, CRAG, Self-RAG, top_k), the models and the pipeline settings. A different
+    profile or setting never shares an answer."""
+    return {
+        "flags": flags_used,
+        "answer_model": settings.llm_model_answer,
+        "embedding_model": settings.embedding_model,
+        "pipeline": pipeline_settings(),
+        "version": RAG_CACHE_VERSION,
+    }
+
+
+# The system prompt tells the model to "say you don't know" (straight or curly apostrophe).
+_MODEL_DECLINE = re.compile(r"\bI don['’]t know\b", re.IGNORECASE)
+
+
+def _cacheable(answer: str, chunks: list[RetrievedChunk]) -> bool:
+    """Only real answers: never one made without context (not found / off-topic / too vague)
+    or one where the model said it doesn't know — cheap to redo, and the docs, the web or a
+    retry may have it next time."""
+    if not chunks or answer in (NOT_FOUND_ANSWER, OUT_OF_SCOPE_ANSWER, CLARIFY_ANSWER):
+        return False
+    return _MODEL_DECLINE.search(answer) is None
+
+
 def _dedupe(sources: list[str]) -> list[str]:
     return list(dict.fromkeys(sources))  # keeps retrieval order
 
@@ -194,9 +248,23 @@ async def run_rag_with_trace(
     user's question) — at most `max_reflection_retries` (2) times. The first answer that
     reaches the bar is returned, otherwise the best-scoring one.
     """
+    with cache_scope():
+        return await _run_rag_with_trace(question, flags)
+
+
+async def _run_rag_with_trace(
+    question: str, flags: dict[str, Any] | None
+) -> tuple[ChatResponse, list[RetrievedChunk]]:
     start = time.perf_counter()
     flags = validate_flags(flags)
     flags_used = {key: _flag(flags, key) for key in DEFAULT_FLAGS}
+    cache_context = _cache_context(flags_used)
+    if (hit := await query_cache.get_rag_answer(question, cache_context)) is not None:
+        response = ChatResponse.model_validate(hit["response"])
+        note_tokens_saved(response.metadata.tokens_used)
+        response.metadata.tokens_used = 0
+        _stamp_cache(response, start)
+        return response, [RetrievedChunk.model_validate(c) for c in hit.get("chunks", [])]
     reflective = bool(_flag(flags, "enable_self_reflective"))
     trace = _Trace()
 
@@ -264,7 +332,26 @@ async def run_rag_with_trace(
             refined_question=best.refined_question,
         ),
     )
+    _stamp_cache(response, start)
+    if _cacheable(best.answer, best.chunks):
+        await query_cache.set_rag_answer(
+            question,
+            cache_context,
+            {
+                "response": response.model_dump(mode="json"),
+                "chunks": [chunk.model_dump(mode="json") for chunk in best.chunks],
+            },
+        )
     return response, best.chunks
+
+
+def _stamp_cache(response: ChatResponse, start: float) -> None:
+    """This request's cache hits, savings and latency (a cached answer keeps none of the
+    original request's)."""
+    with cache_scope() as trace:
+        response.metadata.cache_hits = dict(trace.hits)
+        response.metadata.cost_saved_usd = trace.cost_saved_usd
+    response.metadata.latency_ms = round((time.perf_counter() - start) * 1000, 1)
 
 
 async def run_rag(question: str, flags: dict[str, Any] | None = None) -> ChatResponse:

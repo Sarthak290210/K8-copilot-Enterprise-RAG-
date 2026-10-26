@@ -10,6 +10,7 @@ from loguru import logger
 
 from app.config import settings
 from app.services import llm_service
+from app.services.query_cache_service import note_tokens_saved, query_cache
 
 Intent = Literal["sql", "rag", "hybrid"]
 INTENTS: tuple[Intent, ...] = ("sql", "rag", "hybrid")
@@ -35,7 +36,12 @@ Return JSON: {"intent": "sql" | "rag" | "hybrid"}."""
 
 async def classify_intent(question: str) -> tuple[Intent, int]:
     """(intent, tokens used). Anything unexpected — an error, bad JSON, an unknown value —
-    falls back to "rag", the path that never touches the database."""
+    falls back to "rag", the path that never touches the database.
+
+    Cached per normalised question (Phase 5): a hit costs 0 tokens. Fallbacks aren't cached."""
+    if (hit := await query_cache.get_intent(question)) is not None and hit["intent"] in INTENTS:
+        note_tokens_saved(hit.get("tokens", 0))
+        return hit["intent"], 0  # type: ignore[return-value]
     try:
         result = await llm_service.generate_with_json(
             _INTENT_SYSTEM_PROMPT, f"Question: {question}", model=settings.llm_model_grader
@@ -45,6 +51,9 @@ async def classify_intent(question: str) -> tuple[Intent, int]:
         return "rag", llm_service.tokens_spent(exc)
     raw = str(result["data"].get("intent", "")).strip().lower()
     intent: Intent = raw if raw in INTENTS else "rag"  # type: ignore[assignment]
+    tokens = result["usage"]["total_tokens"]
     if raw not in INTENTS:
         logger.info("Unknown intent {!r}; defaulting to rag", raw[:40])
-    return intent, result["usage"]["total_tokens"]
+    else:
+        await query_cache.set_intent(question, intent, tokens)
+    return intent, tokens

@@ -106,3 +106,89 @@ async def test_data_notes_extracts_dates(service):
         "Current date: 2026-10-26\nDate ranges in the data:\n"
         "- incidents.started_at: 2025-05-16 to 2026-05-16"
     )
+
+
+async def test_generated_sql_is_cached(service, cache_on):
+    svc, replies, seen = service
+    replies.append({"sql": "SELECT count(*) FROM incidents LIMIT 100", "explanation": "counts"})
+    first = await svc.generate_sql("How many incidents?")
+    second = await svc.generate_sql("how many incidents?")
+    assert len(seen) == 1 and second["sql"] == first["sql"] and second["tokens_used"] == 0
+
+
+async def test_cached_sql_is_not_reused_on_another_day_or_schema(service, cache_on, monkeypatch):
+    """'Last month' asked tomorrow (or after a re-seed changed the data ranges) is another
+    query: the cache key holds today's date and the schema prompt."""
+    svc, replies, seen = service
+    sql = "SELECT count(*) FROM incidents LIMIT 100"
+    replies.extend({"sql": sql, "explanation": "counts"} for _ in range(3))
+    await svc.generate_sql("How many incidents last month?")
+
+    class Tomorrow(dt.date):
+        @classmethod
+        def today(cls):
+            return dt.date(2026, 11, 1)
+
+    monkeypatch.setattr(sql_service.dt, "date", Tomorrow)
+    await svc.generate_sql("How many incidents last month?")
+    svc._schema += "\nThere is NO data after 2026-11-01."
+    await svc.generate_sql("How many incidents last month?")
+    assert len(seen) == 3
+
+
+async def test_sql_results_are_cached_and_unsafe_sql_still_refused(monkeypatch, cache_on):
+    connects = []
+
+    class FakeCursor:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def execute(self, query):
+            pass
+
+        async def fetchmany(self, n):
+            return [{"n": Decimal("3")}]
+
+    class FakeTransaction:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+    class FakeConn:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        async def set_read_only(self, value):
+            pass
+
+        def transaction(self):
+            return FakeTransaction()
+
+        async def execute(self, query):
+            pass
+
+        def cursor(self, row_factory=None):
+            return FakeCursor()
+
+    async def connect(conninfo):
+        connects.append(1)
+        return FakeConn()
+
+    monkeypatch.setattr(sql_service.AsyncConnection, "connect", connect)
+    monkeypatch.setattr(sql_service, "readonly_conninfo", lambda: "dbname=x")
+    svc = sql_service.SQLService()
+    query = "SELECT count(*) AS n FROM incidents"
+    assert await svc.execute_sql(query) == [{"n": 3.0}]
+    assert await svc.execute_sql(query.lower() + " ;") == [{"n": 3.0}]
+    assert len(connects) == 1  # the second one came from the cache
+    await cache_on.set_sql_result("DELETE FROM incidents", [{"n": 1}])
+    with pytest.raises(sql_service.SQLGenerationError):
+        await svc.execute_sql("DELETE FROM incidents")  # checked before any cache lookup

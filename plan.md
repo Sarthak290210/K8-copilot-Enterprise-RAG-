@@ -3,6 +3,22 @@
 > **Who this is for:** Claude Code, building `k8-copilot` phase by phase with a beginner developer.
 > **How to read each phase:** Goal → Concept in plain words → `directory/` → `file.py` → every function and what it does → wiring → Done-when → **Eval checkpoint** (run eval, record results in `CLAUDE.md`).
 
+> **Progress (updated 2026-10-26):** Phases 0–5 ✅ done (E0–E5 recorded in `CLAUDE.md`; Phase 5 not committed yet); Phase 6 next, on the user's "go". Commits: `568b58a` (0–1), `cc13a43` (2), `1124d43` (3), `ac8258f` + `6fe3052` (4).
+>
+> **Decisions that changed this plan (all the user's; details in `CLAUDE.md`):**
+> - **LLM:** Cerebras (`gpt-oss-120b` answers/grades, `qwen-3.8-27b` judges with thinking off); free $5 trial credit, so evals are budgeted.
+> - **Eval metrics:** context_precision / context_recall are computed from source file names (0 tokens), not by the LLM judge; answer_relevancy strictness 1 from E3 on.
+> - **Reranking** is built but **off by default** (no tested reranker beat plain hybrid at an acceptable latency on CPU); Phase 3 profiles build on `hybrid`, not `hybrid+rerank`.
+> - **Default flags:** hybrid + CRAG on; HyDE, rerank, Self-RAG off (Self-RAG by manual toggle only).
+> - **CRAG** searches the web **only for Kubernetes / IT-ops questions** (general web, no domain list); off-topic questions are declined, too-vague ones get a request for more detail.
+> - **Self-RAG** grades relevance, accuracy, completeness and clarity (mean < 0.8 → refine the question, re-answer, max 2 retries).
+> - **Goldens:** q-017 (weather) and q-018 (quantum) were re-tagged from crag to security "should decline".
+> - **Text2SQL:** the SQL model is told today's date and each table's date range; each user approves their own SQL (no admin queue).
+> - **E4–E6 use the `defaults` profile** (hybrid + CRAG) instead of `all`, to stay within the credit.
+> - **Phase 5 cache:** the embedding tier caches question (and HyDE) vectors only, not document chunks; each process keeps an in-memory copy in front of Redis (a warm answer in ~10 ms); files ingested before Phase 5 got their hashes recorded instead of being re-ingested.
+> - **E5:** the cold run's TTLs (`CACHE_TTL_RAG`, `CACHE_TTL_SQL_RESULT`) were raised to 3 h for that run; it was stopped for low memory and resumed, its first answers expired, so an answers-only refill pass ran before the warm run.
+> - **Phase 5 code review (7 of 10 fixed):** SQL cache key keeps quoted text exact; dedup also checks Qdrant; checkpoints per cache mode; answer key includes the pipeline settings; SQL key includes today's date + schema; `answer_cache_hit_rate` counts only whole cached answers (+ `sql_result_cache_hit_rate`); model-written "I don't know" isn't cached. Postponed: stale answers after `make seed` / in other workers' memory, the backfill check, S3 tests.
+
 ---
 
 ## 0. Rules for Claude Code (read first, follow every phase)
@@ -106,10 +122,10 @@ Extra checks (`eval/post_checks.py`):
 | E0 | Phase 0 | `naive` (smoke test: every row is skipped because RAG doesn't exist yet) |
 | **E1** | **Phase 1 (basic RAG)** | **`naive` = the BASELINE every later phase is compared to** |
 | E2 | Phase 2 | `sparse_only`, `hybrid`, `hybrid+rerank` |
-| E3 | Phase 3 | `hybrid+rerank+hyde`, `hybrid+rerank+crag`, `all` |
-| E4 | Phase 4 | `all` (now including sql + hybrid goldens) |
-| E5 | Phase 5 | `all` cold run, then `all` warm run (cache) |
-| E6 | Phase 6 | `all` + `security` filter |
+| E3 | Phase 3 | `hybrid+hyde`, `hybrid+crag`, `all` (no rerank: it hurt in E2) |
+| E4 | Phase 4 | `defaults` = hybrid + CRAG (now including sql + hybrid goldens) |
+| E5 | Phase 5 | `defaults` cold run, then `defaults` warm run (cache) |
+| E6 | Phase 6 | `defaults` + `security` filter |
 | FINAL | Phase 7 | summary table across all checkpoints |
 
 ### 2.3 How to record results in `CLAUDE.md` (mandatory)
@@ -135,12 +151,12 @@ After **every** eval run:
 - [x] `app/config.py`, `app/main.py`
 - [x] `app/api/admin.py`, `app/api/auth.py`
 - [x] `app/middleware/auth.py`, `app/middleware/rate_limiter.py`
-- [ ] Verify the above against this plan and apply the fixes
-- [ ] uv skeleton complete (`pyproject.toml`, `uv sync` works)
-- [ ] Docker Compose + Dockerfile
-- [ ] Migrations + seeding (users, K8s ops tables, raw docs copied in)
-- [ ] Eval harness + golden questions + empty eval run (E0)
-- [ ] `CLAUDE.md` created from the template
+- [x] Verify the above against this plan and apply the fixes
+- [x] uv skeleton complete (`pyproject.toml`, `uv sync` works)
+- [x] Docker Compose + Dockerfile
+- [x] Migrations + seeding (users, K8s ops tables, raw docs copied in)
+- [x] Eval harness + golden questions + empty eval run (E0)
+- [x] `CLAUDE.md` created from the template
 
 **Concepts in plain words:**
 - **uv** is a fast Python package manager. `pyproject.toml` lists dependencies; `uv sync` installs them.
@@ -331,12 +347,12 @@ Suggested mix: about 8 baseline, 4 sparse (exact names like `CrashLoopBackOff`, 
 `test_config.py` (startup fails with an empty `jwt_secret`), `test_auth.py` (hash/verify round trip; token decode; expired token → 401; non-admin → 403), `test_rate_limiter.py` (21st call blocked, using fakeredis or the in-memory fallback), `test_health.py` (mocked pings), `test_schema.py` (bad id rejected, duplicate IDs rejected).
 
 ### ✅ Phase 0 — Done when
-- [ ] `docker compose up -d` → postgres and qdrant are healthy
-- [ ] `make seed` creates the tables, the admin user, and the K8s ops rows (`SELECT count(*) FROM incidents` > 0)
-- [ ] `make api` → `GET /admin/health` returns ok for postgres, qdrant, redis and cerebras
-- [ ] register → login → token works on a protected test route; the 6th login within a minute returns 429
-- [ ] `python -m eval.schema` validates the golden file
-- [ ] `make test` is green
+- [x] `docker compose up -d` → postgres and qdrant are healthy
+- [x] `make seed` creates the tables, the admin user, and the K8s ops rows (`SELECT count(*) FROM incidents` > 0)
+- [x] `make api` → `GET /admin/health` returns ok for postgres, qdrant, redis and cerebras
+- [x] register → login → token works on a protected test route; the 6th login within a minute returns 429
+- [x] `python -m eval.schema` validates the golden file
+- [x] `make test` is green
 
 ### 🧪 EVAL CHECKPOINT E0 — empty eval (harness smoke test)
 1. `uv run python -m eval.run_ragas --profile naive`. Expected: every row skipped ("RAG not implemented"), and a JSON file written.
@@ -460,10 +476,10 @@ Suggested mix: about 8 baseline, 4 sparse (exact names like `CrashLoopBackOff`, 
 `test_document_processor.py` (a tiny txt/html fixture gives ≥ 1 chunk with source set), `test_vector_store.py` (in-memory Qdrant `QdrantClient(":memory:")`), `test_rag_service.py` (mocked LLM and embeddings; no chunks → "don't know" with no LLM call), `test_query_api.py` (401 without a token).
 
 ### ✅ Phase 1 — Done when
-- [ ] `make seed` ingests the true_data and the noise sample, with the chunk count printed
-- [ ] Streamlit: log in → ask "What is a Pod?" → answer with `[1]` citations and `pods.html` as a source
-- [ ] Uploading a new doc through the UI makes it answerable right away
-- [ ] `make test` is green
+- [x] `make seed` ingests the true_data and the noise sample, with the chunk count printed (7,285 chunks: 47 true docs + 148 of 150 sampled noise PDFs)
+- [ ] Streamlit: log in → ask "What is a Pod?" → answer with `[1]` citations and `pods.html` as a source _(to re-check live after the Docker image rebuild)_
+- [ ] Uploading a new doc through the UI makes it answerable right away _(to re-check live after the Docker image rebuild)_
+- [x] `make test` is green
 
 ### 🧪 EVAL CHECKPOINT E1 — **BASELINE (most important run)**
 1. `make eval-baseline` (profile `naive`)
@@ -532,10 +548,10 @@ Suggested mix: about 8 baseline, 4 sparse (exact names like `CrashLoopBackOff`, 
 `test_sparse.py` (an exact-token query ranks the right doc first), `test_rrf.py` (hand-computed RRF example), `test_reranking.py` (mocked model order respected; fallback on exception).
 
 ### ✅ Phase 2 — Done when
-- [ ] The `CrashLoopBackOff`-style exact-term questions now return the right source
-- [ ] The sparse index builds once, not per query (check the logs)
-- [ ] The reranker loads once; one query adds less than ~1 s of latency on CPU
-- [ ] `make test` is green
+- [x] The `CrashLoopBackOff`-style exact-term questions now return the right source _(partly: "CrashLoopBackOff" isn't in the corpus; other exact terms work, e.g. `kubectl rollout undo` → kubectl cheatsheet #1)_
+- [x] The sparse index builds once, not per query (check the logs)
+- [x] The reranker loads once; one query adds less than ~1 s of latency on CPU _(loads once; ~1.1 s at 256 tokens; off by default)_
+- [x] `make test` is green
 
 ### 🧪 EVAL CHECKPOINT E2
 1. Run `make eval-sparse`, `make eval-hybrid`, `make eval-rerank` (profiles `sparse_only`, `hybrid`, `hybrid+rerank`).
@@ -552,7 +568,7 @@ Suggested mix: about 8 baseline, 4 sparse (exact names like `CrashLoopBackOff`, 
 **Concepts in plain words:**
 - **HyDE (Hypothetical Document Embeddings):** a short, vague question ("why is my app not starting?") embeds poorly. So ask the LLM to *write a fake answer paragraph first*, embed *that*, and search with it. The fake answer looks like real docs, so it lands near them. We generate 3 hypotheses and merge the results.
 - **CRAG (Corrective RAG):** after retrieval, a grader LLM scores each chunk's relevance from 0 to 1. Good (≥ 0.7): use the chunks. Ambiguous (0.5–0.7): use the chunks plus a web search. Bad (< 0.5): use the web only (Tavily). It's like a librarian who checks the books before handing them over.
-- **Self-RAG (self-reflection):** after answering, a grader LLM scores the answer: is it supported by the context, and does it answer the question? If the score is below 0.85, rewrite the question or answer and retry, at most 2 times.
+- **Self-RAG (self-reflection):** after answering, a grader LLM scores the answer: is it supported by the context, and does it answer the question? If the score is below 0.85, rewrite the question or answer and retry, at most 2 times. _(Built (user's design): the grader scores relevance, accuracy, completeness and clarity, mean < 0.8 → refine the question and re-answer.)_
 - **JSON mode:** forces the LLM to return valid JSON, so the code can read scores reliably.
 
 ### 📁 app/models.py (extend)
@@ -574,7 +590,7 @@ Suggested mix: about 8 baseline, 4 sparse (exact names like `CrashLoopBackOff`, 
 #### `app/services/web_search.py` — *Objective: a fallback knowledge source.*
 | Function | What it does |
 |---|---|
-| `search_web(query, max_results=5) -> list[RetrievedChunk]` | Tavily search (restrict to kubernetes.io and similar domains if you can) → chunks with `source` = the URL and `metadata["origin"] = "web"`. Returns an empty list if there's no API key. |
+| `search_web(query, max_results=5) -> list[RetrievedChunk]` | Tavily search (restrict to kubernetes.io and similar domains if you can) _(built as general web; instead the CRAG grader allows the web only for Kubernetes / IT-ops questions)_ → chunks with `source` = the URL and `metadata["origin"] = "web"`. Returns an empty list if there's no API key. |
 
 #### `app/services/crag.py` — *Objective: grade retrieval, and correct it if it's bad.*
 | Function | What it does |
@@ -601,17 +617,17 @@ Suggested mix: about 8 baseline, 4 sparse (exact names like `CrashLoopBackOff`, 
 - Add `_ping_tavily` to `health_check`.
 
 ### 📁 eval/
-- Profiles `hybrid+rerank+hyde`, `hybrid+rerank+crag` and `all` must be defined.
+- Profiles `hybrid+rerank+hyde`, `hybrid+rerank+crag` and `all` must be defined. _(Built as `hybrid+hyde`, `hybrid+crag`, `all`, without rerank.)_
 - Make sure you have hyde goldens (vague questions), crag goldens (topics *not* in the docs, e.g. a recent K8s release feature) and self_rag goldens.
 
 ### 📁 tests/
 `test_hyde.py` (mocked LLM returns 3 hypotheses → 4 searches; dedup works), `test_crag.py` (threshold mapping; no Tavily key → original chunks kept), `test_self_reflective.py` (retry stops at 2; grader error → score 0).
 
 ### ✅ Phase 3 — Done when
-- [ ] A vague question retrieves better sources with HyDE on than off (show both)
-- [ ] An out-of-corpus question triggers CRAG → web, with URLs in sources
-- [ ] Self-RAG retries are visible in metadata (`reflection_iterations`)
-- [ ] `make test` is green
+- [x] A vague question retrieves better sources with HyDE on than off (show both)
+- [x] An out-of-corpus question triggers CRAG → web, with URLs in sources
+- [x] Self-RAG retries are visible in metadata (`reflection_iterations`)
+- [x] `make test` is green
 
 ### 🧪 EVAL CHECKPOINT E3
 1. `make eval-hyde` (`--filter hyde`), `make eval-crag` (`--filter crag`), `make eval-all`.
@@ -714,15 +730,15 @@ Suggested mix: about 8 baseline, 4 sparse (exact names like `CrashLoopBackOff`, 
 `test_sql_safety.py` (`DROP`, `SELECT 1; DELETE…`, `pg_sleep` → rejected; a CTE select → allowed), `test_router.py` (mocked LLM; invalid JSON → `rag`), `test_graph.py` (MemorySaver: the sql path pauses at approval; reject → no execution; hybrid path has real chunk text).
 
 ### ✅ Phase 4 — Done when
-- [ ] "How many P1 incidents happened last month?" → SQL shown → approve → correct number
-- [ ] "What is a StatefulSet?" → RAG answer, with no SQL
-- [ ] A hybrid question → numbers from the DB plus remediation steps from the docs
-- [ ] Another user's token can't approve your `query_id` (404)
-- [ ] A malicious SQL attempt is rejected
-- [ ] `make test` is green
+- [x] "How many P1 incidents happened last month?" → SQL shown → approve → correct number
+- [x] "What is a StatefulSet?" → RAG answer, with no SQL
+- [x] A hybrid question → numbers from the DB plus remediation steps from the docs
+- [x] Another user's token can't approve your `query_id` (404)
+- [x] A malicious SQL attempt is rejected
+- [x] `make test` is green
 
 ### 🧪 EVAL CHECKPOINT E4
-1. `make eval-all` (now includes the sql and hybrid goldens).
+1. `make eval-all` (now includes the sql and hybrid goldens). _(Ran `make eval-defaults` = hybrid + CRAG, the user's budget choice.)_
 2. Record with `--phase 4`.
 3. Observations: **intent_accuracy** (target ≥ 90%), SQL keyword match rate, and whether the RAG metrics stayed stable versus E3 (the agent refactor must not regress RAG quality).
 
@@ -740,9 +756,9 @@ Suggested mix: about 8 baseline, 4 sparse (exact names like `CrashLoopBackOff`, 
 |---|---|---|---|
 | intent | normalised question | 24 h | An intent rarely changes |
 | embedding | exact text | 7 d | The same text always gives the same vector |
-| rag_answer | question + flags | 1 h | Docs may be updated |
-| sql_gen | question | 24 h | The schema is stable |
-| sql_result | normalised SQL | 15 min | Ops data changes often |
+| rag_answer | question + flags + models + pipeline settings | 1 h | Docs may be updated |
+| sql_gen | question + today's date + schema prompt | 24 h | The schema is stable ("last month" changes daily) |
+| sql_result | SQL, case/spaces folded outside quotes | 15 min | Ops data changes often |
 
 - **Cache key:** `namespace:sha256(text)`, short and fixed-length. Example: `intent:9f2c…`.
 - **Hit rate:** hits / (hits + misses).
@@ -760,7 +776,7 @@ Suggested mix: about 8 baseline, 4 sparse (exact names like `CrashLoopBackOff`, 
 | `_key(namespace, raw)` | `f"{namespace}:{sha256(raw)}"`. |
 | `intent_key(question)` | Uses `question.strip().lower()`. |
 | `rag_answer_key(question, cache_context)` | Hashes the JSON of `{question, context}`, where context = the flags. A different profile must not share an answer. |
-| `sql_gen_key(question)` / `sql_result_key(sql)` | SQL is whitespace-collapsed and lowercased, so formatting changes still hit. |
+| `sql_gen_key(question, context)` / `sql_result_key(sql)` | sql_gen: context = today's date + the schema prompt. SQL: whitespace collapsed and lowercased **outside quotes only**, so formatting changes still hit but `'Running'` ≠ `'running'` _(fixed after the Phase 5 review: lowercasing quoted values shared results)_. |
 | `embedding_key(text)` | Uses the exact text, plus the model name (so changing the model invalidates). |
 | `_record(tier, field)` | Increments hits, misses or sets under the lock. |
 | `_get(tier, key) -> str \| None` | Tries Redis → falls back to memory (checks expiry and deletes stale entries) → records a hit or miss. |
@@ -810,9 +826,9 @@ Suggested mix: about 8 baseline, 4 sparse (exact names like `CrashLoopBackOff`, 
 |---|---|
 | `embedding_service.embed_texts` | Look up each text in the embedding cache. Run the bge model **only for the misses**, then set them. |
 | `router_service.classify_intent` | `get_intent` before the LLM call, `set_intent` after. |
-| `rag_service.run_rag` + `_cache_context(flags)` | `_cache_context` returns the flags that change the answer (search_mode, rerank, hyde, crag, self_rag, top_k). `get_rag_answer` at the start; `set_rag_answer` after a successful answer (never cache errors or "don't know" from a failed retrieval). Mark `cache_hits["rag_answer"]=True` in metadata. |
+| `rag_service.run_rag` + `_cache_context(flags)` | `_cache_context` returns everything that changes the answer: the flags (search_mode, rerank, hyde, crag, self_rag, top_k), the models and `pipeline_settings()` (CRAG thresholds, RRF_K, reranker, ...); model-written "I don't know" answers aren't stored. `get_rag_answer` at the start; `set_rag_answer` after a successful answer (never cache errors or "don't know" from a failed retrieval). Mark `cache_hits["rag_answer"]=True` in metadata. |
 | `sql_service.generate_sql` / `execute_sql` | sql_gen and sql_result tiers. The **approval step still happens** even when the SQL comes from the cache. |
-| `documents.upload_document` + `seed_db._ingest_one` | `compute_file_hash` → if `exists` → skip with "already ingested", otherwise ingest and `set_metadata`. |
+| `documents.upload_document` + `seed_db._ingest_one` | `compute_file_hash` → if `find_indexed` (the hash record **and** that source's chunks still in Qdrant) → skip with "already ingested", otherwise ingest and `set_metadata`. |
 | `metadata.cost_saved_usd` | Estimate it from the tokens skipped on cache hits. |
 
 ### 📁 app/api/admin.py (extend)
@@ -825,16 +841,18 @@ Suggested mix: about 8 baseline, 4 sparse (exact names like `CrashLoopBackOff`, 
 `test_query_cache.py` (in-memory: set/get, expiry, stats, clear), `test_doc_cache.py` (same bytes → same hash; second ingest skipped), `test_local_storage.py` (traversal blocked).
 
 ### ✅ Phase 5 — Done when
-- [ ] Asking the same question twice: the second answer is under 100 ms, with `cache_hits.rag_answer=true`
-- [ ] Changing a flag means no cache hit (the key includes the flags)
-- [ ] Re-running `make seed` skips files that are already ingested
-- [ ] `/admin/cache/stats` shows hit rates, and `/admin/cache/clear` really empties Redis
-- [ ] The app still works with the Redis env vars removed (memory fallback)
+- [x] Asking the same question twice: the second answer is under 100 ms, with `cache_hits.rag_answer=true` _(9.4 ms in the server; 108 ms wall, of which ~44 ms is the rate limiter's Upstash call)_
+- [x] Changing a flag means no cache hit (the key includes the flags)
+- [x] Re-running `make seed` skips files that are already ingested _(195 skipped)_
+- [x] `/admin/cache/stats` shows hit rates, and `/admin/cache/clear` really empties Redis
+- [x] The app still works with the Redis env vars removed (memory fallback)
 
 ### 🧪 EVAL CHECKPOINT E5
-1. `POST /admin/cache/clear`, then `make eval-all` (a **cold** run) → record with `--phase 5 --note "cold cache"`.
-2. Immediately run `make eval-all` again (a **warm** run) → record with `--note "warm cache"`.
+1. `POST /admin/cache/clear`, then `make eval-defaults` (a **cold** run) → record with `--phase 5 --note "cold cache"`.
+2. Immediately run `make eval-defaults` again (a **warm** run) → record with `--note "warm cache"`.
 3. Observations: quality metrics must be **unchanged** (within ±0.02, since the judge has some noise), latency should drop sharply on the warm run, and note the cache hit rate per tier from `/admin/cache/stats`. If quality changed, a cache key is missing something it should include.
+
+**✅ E5 done (2026-10-26):** cold 0.695 / 0.791 / 0.793 / 0.775 (faith / prec / rec / rel); warm: retrieval identical, 27/44 answers whole from the cache (0.614) and 100% of SQL results, mean latency 70.4 s → 12.7 s, cached answers 72 s → 0.1 s, 120b tokens −80%. Warm faithfulness −0.053: judge noise on identical answers plus 6 answers re-generated by the refill (not the cache). In practice: `make eval-cold` / `make eval-warm` (in-process, so `/admin/cache/stats` can't see them; the result file stores the per-tier stats), and the ±0.02 target turned out tighter than the judge's own noise (~±0.05).
 > Note: while evaluating *retrieval features* in later runs, clear the cache first or run with caching disabled, so you aren't measuring cached answers.
 
 ---
@@ -951,8 +969,8 @@ One test file per security module, plus `test_security_pipeline.py`: an injectio
 - [ ] `make test` is green
 
 ### 🧪 EVAL CHECKPOINT E6
-1. `uv run python -m eval.run_ragas --profile all --filter security` → record with `--phase 6 --note "security goldens"`.
-2. `make eval-all` (cache cleared) → record with `--phase 6 --note "full suite with security on"`.
+1. `uv run python -m eval.run_ragas --profile defaults --filter security` → record with `--phase 6 --note "security goldens"`.
+2. `make eval-defaults` (cache cleared) → record with `--phase 6 --note "full suite with security on"`.
 3. Observations: block rate, false-block rate, **faithfulness change** (the grounding check should hold or improve it), and the latency added by the security layers (target < 1.5 s overhead).
 
 ---
@@ -968,20 +986,20 @@ One test file per security module, plus `test_security_pipeline.py`: an injectio
 
 ## Appendix A — Reference bugs to avoid (checklist)
 
-- [ ] JWT secret is empty by default → fail at startup (Phase 0)
-- [ ] `create_access_token` scoping bug on `expire` (Phase 0)
-- [ ] No upload route → `app/api/documents.py` (Phase 1)
-- [ ] Sparse index rebuilt on every query with a 10k cap, and `rrf_k` unused (Phase 2)
-- [ ] `mps` device on Windows → `cuda`/`cpu` (Phase 2)
-- [ ] CRAG with no Tavily key returns empty chunks (Phase 3)
-- [ ] Self-RAG fails open on grader errors (Phase 3)
-- [ ] Hard-coded confidence → use the real grader/grounding score (Phases 3 and 6)
-- [ ] Hybrid `retrieve_rag` passes file names as text (Phase 4)
-- [ ] Hybrid path runs SQL before approval (Phase 4)
-- [ ] Intent classified twice (Phase 4)
-- [ ] Weak SELECT-only check → sqlglot + read-only role (Phase 4)
-- [ ] `/query/sql/execute` skips the security checks, and `query_id` ownership is never checked (Phases 4 and 6)
-- [ ] Cache `clear()` is a no-op for Redis (Phase 5)
+- [x] JWT secret is empty by default → fail at startup (Phase 0)
+- [x] `create_access_token` scoping bug on `expire` (Phase 0)
+- [x] No upload route → `app/api/documents.py` (Phase 1)
+- [x] Sparse index rebuilt on every query with a 10k cap, and `rrf_k` unused (Phase 2)
+- [x] `mps` device on Windows → `cuda`/`cpu` (Phase 2)
+- [x] CRAG with no Tavily key returns empty chunks (Phase 3)
+- [x] Self-RAG fails open on grader errors (Phase 3)
+- [ ] Hard-coded confidence → use the real grader/grounding score (Phases 3 and 6) _(Phase 3 part done: reflection / CRAG scores; grounding in Phase 6)_
+- [x] Hybrid `retrieve_rag` passes file names as text (Phase 4)
+- [x] Hybrid path runs SQL before approval (Phase 4)
+- [x] Intent classified twice (Phase 4)
+- [x] Weak SELECT-only check → sqlglot + read-only role (Phase 4)
+- [ ] `/query/sql/execute` skips the security checks, and `query_id` ownership is never checked (Phases 4 and 6) _(Phase 4 part done: auth, rate limit, ownership → 404; security layers in Phase 6)_
+- [x] Cache `clear()` is a no-op for Redis (Phase 5)
 - [ ] Output validator not wired in (Phase 6)
 - [ ] Token budget consumes the estimate, not actual usage (Phase 6)
 - [ ] llm-guard fails open (Phase 6)

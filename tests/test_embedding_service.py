@@ -35,3 +35,28 @@ async def test_query_gets_bge_instruction(monkeypatch):
     model = install(monkeypatch)
     await embedding_service.embed_query("What is a Pod?")
     assert model.seen[0][0] == [embedding_service.BGE_QUERY_INSTRUCTION + "What is a Pod?"]
+
+
+async def test_cached_texts_run_the_model_only_for_misses(monkeypatch, cache_on):
+    model = install(monkeypatch)
+    assert await embedding_service.embed_texts(["a", "bb"], cache=True) == [[1.0, 0.0], [2.0, 0.0]]
+    assert await embedding_service.embed_texts(["bb", "ccc", "a"], cache=True) == [
+        [2.0, 0.0],
+        [3.0, 0.0],
+        [1.0, 0.0],
+    ]
+    assert [seen for seen, _ in model.seen] == [["a", "bb"], ["ccc"]]
+
+
+async def test_documents_are_never_cached(monkeypatch, cache_on):
+    model = install(monkeypatch)
+    await embedding_service.embed_texts(["chunk"])
+    await embedding_service.embed_texts(["chunk"])
+    assert len(model.seen) == 2 and cache_on.stats()["tiers"]["embedding"]["sets"] == 0
+
+
+async def test_query_embedding_is_cached(monkeypatch, cache_on):
+    model = install(monkeypatch)
+    await embedding_service.embed_query("What is a Pod?")
+    await embedding_service.embed_query("What is a Pod?")
+    assert len(model.seen) == 1

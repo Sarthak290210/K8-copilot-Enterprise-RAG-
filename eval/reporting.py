@@ -29,6 +29,24 @@ def aggregate(
     matches = [row["intent_match"] for row in rows if row.get("intent_match") is not None]
     summary["intent_accuracy"] = round(sum(matches) / len(matches), 3) if matches else None
     summary["sql_keyword_match_rate"] = _mean([row.get("sql_keyword_match") for row in rows])
+    # Phase 5: share of questions answered whole from the cache (a rag_answer hit: no LLM
+    # call at all). A sql_result hit isn't one: the SQL/hybrid answer call still runs, so
+    # database questions get their own rate (rows with SQL whose results came from the cache).
+    cached = [row["cache_hits"] for row in rows if row.get("cache_hits") is not None]
+    full_hits = [bool(h.get("rag_answer")) for h in cached]
+    summary["answer_cache_hit_rate"] = (
+        round(sum(full_hits) / len(full_hits), 3) if full_hits else None
+    )
+    sql_hits = [
+        bool(row["cache_hits"].get("sql_result"))
+        for row in rows
+        if row.get("cache_hits") is not None and row.get("generated_sql")
+    ]
+    summary["sql_result_cache_hit_rate"] = (
+        round(sum(sql_hits) / len(sql_hits), 3) if sql_hits else None
+    )
+    saved = [row.get("cost_saved_usd") or 0.0 for row in rows if "cost_saved_usd" in row]
+    summary["cost_saved_usd"] = round(sum(saved), 6) if saved else None
     return summary
 
 
@@ -64,6 +82,8 @@ def print_table(payload: dict[str, Any]) -> None:
         + f" | source_overlap {_fmt(agg['source_overlap'])}"
         + f" | forbidden {agg['forbidden_violations']} | latency_ms {_fmt(agg['latency_ms'])}"
         + f" | intent_accuracy {_fmt(agg.get('intent_accuracy'))}"
+        + f" | answer_cache_hit_rate {_fmt(agg.get('answer_cache_hit_rate'))}"
+        + f" | sql_result_cache_hit_rate {_fmt(agg.get('sql_result_cache_hit_rate'))}"
         + f" | sql_keyword_match {_fmt(agg.get('sql_keyword_match_rate'))}"
     )
     if payload["skipped"]:

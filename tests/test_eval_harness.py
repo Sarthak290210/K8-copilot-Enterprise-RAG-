@@ -1,5 +1,6 @@
 """Tests for the eval modules: profiles, invokers, post-checks, reporting, diff, record, runner."""
 
+import uuid
 from typing import cast
 
 import pytest
@@ -22,6 +23,7 @@ from eval.profiles import PROFILES, get_profile
 from eval.reporting import aggregate
 from eval.run_ragas import (
     JudgeQuotaExhausted,
+    cache_mode,
     checkpoint_path,
     collect_rows,
     load_checkpoint,
@@ -197,6 +199,10 @@ def test_checkpoint_round_trip_and_key_mismatch(tmp_path):
     assert load_checkpoint(tmp_path / "missing.json", key) == {}
     assert checkpoint_path("hybrid+rerank", None).name == "hybrid-rerank.json"
     assert checkpoint_path("all", "security").name == "all_security.json"
+    # E5: a cold run and a --no-cache run never share a checkpoint with a normal (warm) run
+    assert checkpoint_path("defaults", None, cache_mode(True, False)).name == "defaults_cold.json"
+    assert checkpoint_path("defaults", None, cache_mode(False, True)).name == "defaults_off.json"
+    assert checkpoint_path("defaults", None, cache_mode(False, False)).name == "defaults.json"
 
 
 GOOD = {"faithfulness": 1.0, "answer_relevancy": 0.9}  # what the LLM judge returns
@@ -512,3 +518,50 @@ async def test_collect_rows_records_intent_and_sql():
     assert row["generated_sql"].startswith("SELECT") and row["sql_rows_count"] == 1
     assert row["context_sources"] == ["query_results"]  # = the sql goldens' source marker
     assert row["source_overlap"]["overlap"] == 1.0
+
+
+def test_aggregate_reports_answer_cache_hits_and_savings():
+    rows = [make_row(q, 0.8, 1.0) for q in "abcd"]
+    rows[0].update(cache_hits={"intent": True, "rag_answer": True}, cost_saved_usd=0.002)
+    rows[1].update(cache_hits={"intent": True, "sql_gen": True, "sql_result": True},
+                   cost_saved_usd=0.001)  # fmt: skip
+    rows[2].update(cache_hits={"intent": False, "rag_answer": False}, cost_saved_usd=0.0)
+    rows[3].update(cache_hits={}, cost_saved_usd=0.0)
+    rows[1]["generated_sql"] = "SELECT 1"
+    summary = aggregate(rows, [], [])
+    # Only a rag_answer hit is a whole answer from the cache: the SQL row still made its
+    # answer call, so it counts in the SQL rate instead.
+    assert summary["answer_cache_hit_rate"] == 0.25 and summary["cost_saved_usd"] == 0.003
+    assert summary["sql_result_cache_hit_rate"] == 1.0
+    assert aggregate([make_row("a", 0.8, 1.0)], [], [])["answer_cache_hit_rate"] is None
+
+
+async def test_agent_invoker_merges_cache_hits_of_run_and_resume(monkeypatch):
+    from app.core import graph as agent
+    from app.core.graph import AgentResult
+    from app.models import ChatResponse, PendingSQLBlock, ResponseMetadata
+    from eval.invokers import AgentInvoker
+
+    qid = uuid.uuid4()
+    pending = ChatResponse(
+        answer="review",
+        pending_sql=PendingSQLBlock(query_id=qid, sql="SELECT 1", explanation="", intent="sql"),
+        metadata=ResponseMetadata(
+            cache_hits={"intent": True, "sql_gen": True}, cost_saved_usd=0.001
+        ),
+    )
+    final = ChatResponse(
+        answer="1", metadata=ResponseMetadata(cache_hits={"sql_result": True}, cost_saved_usd=0.0)
+    )
+
+    async def run_agent(*args, **kwargs):
+        return AgentResult(pending)
+
+    async def resume_agent(*args, **kwargs):
+        return AgentResult(final)
+
+    monkeypatch.setattr(agent, "run_agent", run_agent)
+    monkeypatch.setattr(agent, "resume_agent", resume_agent)
+    response, _ = await AgentInvoker().invoke("q", {}, "sql")
+    assert response.metadata.cache_hits == {"sql_result": True, "intent": True, "sql_gen": True}
+    assert response.metadata.cost_saved_usd == 0.001

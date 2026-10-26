@@ -2,7 +2,7 @@ import asyncio
 import time
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from openai import AsyncOpenAI
 from psycopg_pool import AsyncConnectionPool
 from pydantic import BaseModel
@@ -12,6 +12,7 @@ from upstash_redis.asyncio import Redis
 
 from app.api.auth import get_pool
 from app.middleware.auth import require_admin
+from app.services.query_cache_service import Tier, query_cache
 
 PING_TIMEOUT_SECONDS = 3
 
@@ -166,3 +167,59 @@ async def services_health(
     )
     overall = "ok" if all(s.status == "up" for s in services) else "degraded"
     return HealthReport(status=overall, services=services)
+
+
+# ---------------- cache admin (Phase 5) ----------------
+
+
+class TierStats(BaseModel):
+    hits: int
+    misses: int
+    sets: int
+    hit_rate: str | None  # e.g. "75.0%", None before the first lookup
+
+
+class CacheStats(BaseModel):
+    enabled: bool
+    backend: str  # "redis+memory" | "memory"
+    memory_entries: int
+    tiers: dict[str, TierStats]
+
+
+class CacheClearResult(BaseModel):
+    cleared: dict[str, int]  # tier -> entries deleted
+
+
+def _tier(counts: dict) -> TierStats:
+    rate = counts.get("hit_rate")
+    return TierStats(
+        hits=counts["hits"],
+        misses=counts["misses"],
+        sets=counts["sets"],
+        hit_rate=f"{rate * 100:.1f}%" if rate is not None else None,
+    )
+
+
+@router.get("/cache/stats", response_model=CacheStats)
+async def cache_stats() -> CacheStats:
+    """Hits / misses / sets per tier, counted by this API process since start (or the last
+    clear). An eval run counts in its own process and records its stats in the result file."""
+    stats = query_cache.stats()
+    return CacheStats(
+        enabled=stats["enabled"],
+        backend=stats["backend"],
+        memory_entries=stats["memory_entries"],
+        tiers={name: _tier(counts) for name, counts in stats["tiers"].items()},
+    )
+
+
+@router.post("/cache/clear", response_model=CacheClearResult)
+async def cache_clear(tier: Tier | None = None) -> CacheClearResult:
+    """Delete every cached entry (or one tier's) from Redis and memory."""
+    try:
+        cleared = await query_cache.clear(tier)
+    except Exception as exc:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, f"Cache clear failed ({type(exc).__name__})"
+        ) from None
+    return CacheClearResult(cleared=cleared)

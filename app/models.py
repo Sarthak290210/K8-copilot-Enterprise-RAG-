@@ -68,7 +68,8 @@ class ResponseMetadata(BaseModel):
     flags_used: dict[str, Any] = Field(default_factory=dict)
     latency_ms: float = 0.0
     tokens_used: int = 0  # every LLM call for this answer (HyDE, CRAG, answer, reflection)
-    cache_hits: dict[str, bool] = Field(default_factory=dict)
+    cache_hits: dict[str, bool] = Field(default_factory=dict)  # tier -> hit (Phase 5)
+    cost_saved_usd: float = 0.0  # estimated price of the LLM tokens the cache hits skipped
     model: str | None = None
     hyde_hypotheses: list[str] = Field(default_factory=list)
     crag: CRAGEvaluation | None = None

@@ -1,6 +1,6 @@
 .PHONY: help install sync up down seed seed-docs seed-data api streamlit test lint format validate \
 	eval eval-baseline eval-sparse eval-hybrid eval-rerank eval-hyde eval-crag eval-all eval-defaults \
-	eval-diff eval-record
+	eval-cold eval-warm eval-diff eval-record
 
 # On Windows without `make`, run the `uv run ...` line under a target directly.
 
@@ -86,6 +86,12 @@ eval-all:
 	uv run python -m eval.run_ragas --profile all
 
 eval-defaults:  ## Phase 4+: the shipped defaults (hybrid + CRAG) through the agent
+	uv run python -m eval.run_ragas --profile defaults
+
+eval-cold:  ## Phase 5 (E5): empty every cache tier, then run defaults
+	uv run python -m eval.run_ragas --profile defaults --clear-cache
+
+eval-warm:  ## Phase 5 (E5): run defaults again right after eval-cold (answers from the cache)
 	uv run python -m eval.run_ragas --profile defaults
 
 # Baseline + all, then compare the newest of each.

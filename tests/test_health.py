@@ -103,3 +103,22 @@ async def test_redis_not_configured():
 async def test_tavily_not_configured():
     status = await admin.ping_tavily(None)
     assert (status.status, status.error) == ("down", "NotConfigured")
+
+
+def test_cache_stats_and_clear(monkeypatch, cache_on):
+    _use_fakes(monkeypatch)
+    asyncio.run(cache_on.set_intent("q", "rag", 1))
+    asyncio.run(cache_on.get_intent("q"))
+    asyncio.run(cache_on.get_intent("other"))
+    stats = client.get("/admin/cache/stats").json()
+    assert stats["enabled"] is True and stats["backend"] == "memory"
+    assert stats["tiers"]["intent"] == {"hits": 1, "misses": 1, "sets": 1, "hit_rate": "50.0%"}
+    r = client.post("/admin/cache/clear", params={"tier": "intent"})
+    assert r.status_code == 200 and r.json() == {"cleared": {"intent": 1}}
+    assert asyncio.run(cache_on.get_intent("q")) is None
+    assert client.post("/admin/cache/clear", params={"tier": "bogus"}).status_code == 422
+
+
+def test_cache_routes_require_admin():
+    assert client.get("/admin/cache/stats").status_code == 401
+    assert client.post("/admin/cache/clear").status_code == 401

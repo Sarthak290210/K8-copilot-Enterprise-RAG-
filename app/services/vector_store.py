@@ -212,3 +212,14 @@ async def list_sources(client: AsyncQdrantClient | None = None, limit: int = 10_
 async def count_points(client: AsyncQdrantClient | None = None) -> int:
     client = client or get_client()
     return (await client.count(settings.qdrant_collection, exact=True)).count
+
+
+async def count_source(source: str, client: AsyncQdrantClient | None = None) -> int:
+    """Chunks indexed for one document."""
+    client = client or get_client()
+    source_filter = models.Filter(
+        must=[models.FieldCondition(key="source", match=models.MatchValue(value=source))]
+    )
+    return (
+        await client.count(settings.qdrant_collection, count_filter=source_filter, exact=True)
+    ).count

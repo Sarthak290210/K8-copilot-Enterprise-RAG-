@@ -39,3 +39,25 @@ async def test_invalid_json_defaults_to_rag_and_counts_tokens(llm):
 async def test_errors_default_to_rag(llm):
     llm["error"] = RuntimeError("down")
     assert await router_service.classify_intent("q") == ("rag", 0)
+
+
+async def test_intent_is_cached_per_question(llm, monkeypatch, cache_on):
+    calls = []
+    real = router_service.llm_service.generate_with_json
+
+    async def counting(*args, **kwargs):
+        calls.append(1)
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(router_service.llm_service, "generate_with_json", counting)
+    llm["data"] = {"intent": "sql"}
+    assert await router_service.classify_intent("How many pods?") == ("sql", 42)
+    assert await router_service.classify_intent("how many  pods?") == ("sql", 0)  # 0 tokens
+    assert len(calls) == 1
+
+
+async def test_fallbacks_are_not_cached(llm, cache_on):
+    llm["data"] = {"intent": "weather"}
+    assert (await router_service.classify_intent("q"))[0] == "rag"
+    llm["data"] = {"intent": "sql"}
+    assert await router_service.classify_intent("q") == ("sql", 42)

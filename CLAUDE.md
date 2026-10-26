@@ -8,7 +8,7 @@ Guidance for Claude Code when working in this repository.
 
 ## Current state
 
-Last updated 2026-10-23. `plan.md` is the build plan (Phases 0–7, one phase at a time; **wait for the user's "go"** before starting the next phase). `.env` holds real secrets and is gitignored — keep it that way; `.env.example` is the committed template.
+Last updated 2026-10-26 (Phases 0–4 done and pushed; Phase 5 done: built, live-checked, E5 recorded, code-review fixes applied; not committed). `plan.md` is the build plan (Phases 0–7, one phase at a time; **wait for the user's "go"** before starting the next phase). `.env` holds real secrets and is gitignored — keep it that way; `.env.example` is the committed template.
 
 | Phase | Status | Eval |
 |---|---|---|
@@ -16,23 +16,32 @@ Last updated 2026-10-23. `plan.md` is the build plan (Phases 0–7, one phase at
 | 1 — basic dense RAG (Docling ingest, bge embeddings, Qdrant, Cerebras LLM, `/query`, `/documents`, Streamlit) | ✅ built; corpus ingested (47 true docs + 148/150 noise PDFs = 7,285 chunks) | **E1 = baseline recorded** |
 | 2 — hybrid search (BM25 + RRF) and reranking | ✅ done 2026-10-23 (commit `cc13a43`) | E2 recorded; **best profile = `hybrid` without rerank** (rerank hurts; see E2) |
 | 3 — HyDE, CRAG, Self-RAG (+ Tavily web search) | ✅ built 2026-10-23; live Done-when checks passed; committed `1124d43` (2026-10-26) | **E3 recorded: `all` best on every metric** (0.657/0.735/0.703/0.784) — but see the E3 caveats (CRAG web answers off-topic/abusive requests; Self-RAG never retried). **Defaults since E3: hybrid + CRAG on**, HyDE/rerank/Self-RAG off (user's choice) |
-| 4 — Text2SQL + intent routing + LangGraph agent (human SQL approval) | ✅ built 2026-10-26; live Done-when checks passed via the API; 284 tests; not committed yet | **E4 recorded** (`defaults`): 0.577/0.793/0.772/0.764, intent_accuracy 0.977, no RAG regression on the same 33 questions |
-| 5–7 — caching, security, final comparison | not started | — |
+| 4 — Text2SQL + intent routing + LangGraph agent (human SQL approval) | ✅ done 2026-10-26; live Done-when checks passed via the API; 284 tests; commits `ac8258f` + `6fe3052` | **E4 recorded** (`defaults`): 0.577/0.793/0.772/0.764, intent_accuracy 0.977, no RAG regression on the same 33 questions |
+| 5 — caching (5 tiers, memory + Redis), doc dedup (content hash), storage backend | ✅ built 2026-10-26; live Done-when checks passed (with Redis and without); code-review fixes 2026-10-26; 334 tests; not committed | **E5 recorded**: cold 0.695/0.791/0.793/0.775; warm: 27/44 answers whole from the cache (0.614; first recorded as 0.841, see E5), SQL results 100%, mean latency 70 s → 12.7 s, tokens −80% (warm faith −0.053, judge noise + 6 re-sampled answers, see E5) |
+| 6–7 — security, final comparison | not started | — |
 
-Still open from Phase 1: the Docker api image must be rebuilt (dependencies changed: `groq` → `openai`, plus `rank-bm25`, `voyageai`) and the live Done-when checks via the API (`/query`, `/documents/upload`, Streamlit) haven't been re-run since; the api container is **stopped** (to save RAM during ingest/evals). Evals call the services directly and don't need it.
+Still open: the **Docker api image** must be rebuilt (dependencies changed since it was built: `groq` → `openai`, plus `rank-bm25`, `voyageai`, `sqlglot`; `.env` now needs `COPILOT_RO_PASSWORD`); the api container is **stopped** (to save RAM). Phase 4's live checks ran against the API started on the host (`uvicorn … --loop asyncio:SelectorEventLoop`), covering `/auth/login`, `/query` and `/query/sql/execute`; `/documents/upload` and the Streamlit UI haven't been re-checked live since Phase 1. Evals call the services in-process and don't need the API.
 
-Key decisions so far (all the user's): LLM provider **Cerebras** (free trial, $5 credit — Groq's free tier was too small); answers `gpt-oss-120b`, eval judge `qwen-3.8-27b` (thinking off); context precision/recall computed from source file names (0 LLM tokens); reranker local `ms-marco-MiniLM-L-6` at 256 tokens but **off by default**; Hugging Face models cached on **D:** (`HF_HOME=D:\hf-cache`); `seed/docs/` not committed yet. Tests: **284 pass**, ruff + pyright clean.
+Key decisions so far (all the user's): LLM provider **Cerebras** (free trial, $5 credit — Groq's free tier was too small); answers `gpt-oss-120b`, eval judge `qwen-3.8-27b` (thinking off); context precision/recall computed from source file names (0 LLM tokens); reranker local `ms-marco-MiniLM-L-6` at 256 tokens but **off by default** (a code-trained gte reranker helped quality but is too slow on CPU); default flags **hybrid + CRAG** (HyDE, Self-RAG, rerank off; Self-RAG only by manual toggle); CRAG searches the web **only for Kubernetes / IT-ops questions**, declines off-topic ones and asks vague ones for detail; Self-RAG grades 4 criteria with a 0.8 bar; Text2SQL is **self-approved** (each user approves their own SQL; no admin queue) and read-only; E4–E6 use the **`defaults`** eval profile; Phase 5 caches **question vectors only** (never document chunks), keeps an **in-memory copy in front of Redis**, and recorded hashes for the 195 pre-Phase-5 files instead of re-ingesting them; Hugging Face models cached on **D:** (`HF_HOME=D:\hf-cache`); `seed/docs/` not committed yet. Tests: **334 pass**, ruff + pyright clean.
 
 Check a file before assuming functionality exists.
 
-## Lessons learned (Phases 0–2)
+## Lessons learned (Phases 0–5)
 
 - **Measure, don't assume.** Token estimates were off by 2–3× twice (Groq 120b judge, qwen's hidden thinking); measure one real question with `langchain_core.callbacks.get_usage_metadata_callback` before any full eval run.
 - **Screen retrieval changes for free first.** ID-based context precision/recall need no LLM; the offline replay reproduced the paid eval exactly and showed no reranker beats hybrid before any credit was spent.
 - **Rerankers don't transfer automatically.** MS MARCO / general rerankers (MiniLM L-6/L-12, mxbai-xsmall, bge-reranker-base) all ranked this corpus's K8s chunks worse than dense + BM25 RRF. A code-trained one (gte-reranker-modernbert, fused with the hybrid order) beat hybrid by +0.07 precision, but at 13–27 s/query on CPU — training data matters, and so does latency.
 - **Hybrid beats dense** on this noisy corpus (+0.079 context precision): BM25 catches exact tokens (`kubectl rollout undo`) that embeddings miss.
 - **Make long jobs resumable.** Ingest (`--skip-existing`) and evals (checkpoints) survive kills; the laptop's 7.3 GB RAM gets background jobs killed.
-- **Keep eval settings fixed across a comparison** (same questions, judge, judge settings, metric definitions); when one changes (E1's judge thinking), record which metrics stay comparable.
+- **Keep eval settings fixed across a comparison** (same questions, judge, judge settings, metric definitions); when one changes (E1's judge thinking, q-017/q-018 re-tagged), record which metrics stay comparable and compare on the same question IDs (computed free from the result files).
+- **Averages hide failure modes.** E3 `all` was best on every metric, yet CRAG + general web wrote a poem and an insulting message, and gave dictionary definitions for vague questions: read the per-question answers, not just the table.
+- **Don't let the LLM do logic code can do.** gpt-oss twice judged "Sept 2026 is inside 2025-05..2026-05"; the data-end note is now added in code. Same idea: SQL safety is sqlglot + a read-only role, not a prompt.
+- **A feature that never triggers is just cost.** Self-RAG made 0 retries in E3 (it waited for a refined question the grader never gave) while costing a call per question; check that a feature actually fires before keeping it.
+- **A cache key must hold everything the result depends on.** The Phase 5 review found keys missing the pipeline settings, today's date (SQL) and the case of quoted SQL values: each one would silently serve a wrong cached answer. When a prompt or setting changes the output, it belongs in the key.
+- **Don't trust a side record over the real store.** The dedup records in `./cache` outlive Qdrant (`down -v`); "already ingested" must check Qdrant itself.
+- **Plan TTLs around the eval schedule.** E5's cold run was stopped for low memory, and its first 29 cached answers (3 h TTL) expired before the warm run, so a refill pass was needed; and a metric's name must match what it counts (the first answer-cache hit rate counted SQL rows that still called the LLM).
+- **The judge alone moves faithfulness by ~±0.05** on identical answers (E5: q-034 1.0 → 0.44 with the same text); compare on the same question IDs and the same answers before calling a regression.
+- **Metrics need the right context.** SQL answers with correct numbers scored 0 faithfulness because the judge saw rows without the query; Ragas also scores correct declines ~0. Judge what you can verify, and record the artifact.
 
 ## Layout
 
@@ -58,6 +67,9 @@ app/
   services/sql_service.py        Text2SQL: sqlglot SELECT-only check, schema prompt, run as copilot_ro (Phase 4)
   services/router_service.py     intent routing: sql | rag | hybrid (Phase 4)
   services/passages.py           the one [n] passage formatter (answer prompt, graders)
+  services/query_cache_service.py  5-tier cache (intent, embedding, rag_answer, sql_gen, sql_result) (Phase 5)
+  services/doc_cache_service.py    doc dedup: SHA-256 of the file bytes -> "already ingested" (Phase 5)
+  storage/                       StorageBackend + LocalStorage (./cache) + S3Storage (Phase 5)
   core/state.py, core/graph.py   LangGraph agent: route -> rag | sql (approval) | hybrid (Phase 4)
   security/system_prompt.py      basic system prompt (hardened in Phase 6)
   api/auth.py            /auth/register, /auth/login, /auth/me; get_pool dependency
@@ -74,7 +86,7 @@ seed/docs/true_data/     47 real K8s docs (pdf/docx/html/txt) — the signal cor
 seed/docs/noisy_data/    820 unrelated PDFs — the noise corpus (gitignored, keep on disk)
 eval/                    eval harness: golden_questions.yaml, schema, profiles, invokers,
                          ragas_adapter, post_checks, reporting, run_ragas, diff, record, results/
-tests/                   pytest suite (284 tests; conftest isolates from the real .env, HF offline)
+tests/                   pytest suite (334 tests; conftest isolates from the real .env, HF offline)
 plan.md                  phase-by-phase build plan (Phases 0-7) + eval protocol
 Dockerfile, .dockerignore, docker-compose.yml, Makefile
 .env.example             template for .env (placeholders for secrets, real non-secret defaults)
@@ -114,6 +126,13 @@ Dockerfile, .dockerignore, docker-compose.yml, Makefile
   - API: `POST /query` creates `query_id` (uuid4), stores `(query_id, user_id)` in `query_threads`, runs the graph (thread_id = query_id) → answer or `pending_sql` (`PendingSQLBlock`). `POST /query/sql/execute` (`SqlExecuteRequest {query_id, approved, edited_sql}`): same auth + rate limit; **another user's or an unknown query_id → 404**; not waiting → 409; resumes with `Command(resume=…)`. `main.py` runs 004 at startup and opens an `AsyncPostgresSaver` (its `setup()` creates the checkpoint tables in the main DB; copilot_ro can't read them). Streamlit (`CURRENT_PHASE = 4`): pending-SQL card (editable SQL, Approve/Reject), "SQL that ran" expander.
   - Eval: `AgentInvoker` (in-memory checkpointer, **SQL auto-approved**; the router has to find the intent) is the default; `--rag-only` = the old `ServiceInvoker` (sql/hybrid skipped, the E1–E3 path). New row fields `predicted_intent`, `intent_match` (expected: sql/hybrid as tagged, everything else rag), `generated_sql`, `sql_rows_count`, `sql_keyword_match` (golden keywords found in SQL + answer, sql/hybrid only); aggregate `intent_accuracy`, `sql_keyword_match_rate`; profile **`defaults`** (= hybrid + CRAG, spelled out) and `make eval-defaults`; the run uses a selector event loop on Windows (async psycopg).
   - Live Done-when checks (2026-10-26, real API on the host, ~20 calls): "How many P1 incidents happened last month?" → paused → approve → 0 + the data-end note (SQL used `DATE_TRUNC('month', CURRENT_DATE - INTERVAL '1 month')`); "What is a StatefulSet?" → rag, statefulset.docx; hybrid CrashLoopBackOff → 3,775 pods from the DB + `kubectl logs --previous` from logging.pdf; analyst approving admin's query_id → 404; edited `DELETE FROM incidents` → refused; "Delete all incidents … drop the pods table" → no safe SELECT → refused. Costs: sql ~3k tokens, rag ~4.6k, hybrid ~8.2k per question.
+- **Phase 5 (2026-10-26; user's choices: cache question vectors only, memory copy in front of Redis, record hashes for already-ingested files).**
+  - `services/query_cache_service.py` — `query_cache` singleton. Tiers/TTLs: intent (normalised question + grader model, 24 h), embedding (exact text + model, 7 d), rag_answer (normalised question + `_cache_context` = every flag + answer/embedding models + `pipeline_settings()` (grader, reasoning effort, RRF_K, reranker, HyDE count, CRAG thresholds, reflection bar; moved here from `eval/run_ragas.py`, which imports it) + `RAG_CACHE_VERSION` 2, 1 h), sql_gen (normalised question + answer model + today's date + the schema prompt, 24 h), sql_result (`normalize_sql`: case and spaces folded **only outside quotes**, `'Running'` ≠ `'running'`, 15 min). Keys `cache:<tier>:<sha256>`. Lookup: in-process LRU (`CACHE_MEMORY_MAX_ENTRIES` 1000) → Upstash (GET+TTL in one pipeline, 2 s timeout); a Redis hit fills memory with the remaining TTL. Set: memory + Redis `SET ex` + `SADD cachekeys:<tier>` (so `clear()` really deletes; fix vs reference). Redis errors → a miss / memory only, never raised (except in `clear`). `CACHE_ENABLED=false` skips every tier. `stats()` per tier hits/misses/sets/hit_rate (per process). `CacheTrace` (a ContextVar, `cache_scope()`): per request, which tiers hit and the tokens skipped → `metadata.cache_hits` and `metadata.cost_saved_usd` (tokens × `LLM_COST_PER_MILLION_TOKENS` 0.5, an estimate).
+  - Wiring: `embedding_service.embed_texts(cache=True)` (questions via `embed_query`, HyDE passages; **document chunks never**, user's choice: ~15 KB per vector in Upstash); `router_service.classify_intent` (fallbacks not cached; a hit costs 0 tokens); `rag_service.run_rag_with_trace` (hit → response + full chunks, tokens 0, latency recomputed; only real answers are stored, never NOT_FOUND / OUT_OF_SCOPE / CLARIFY, answers without chunks, or model-written "I don't know" answers); `sql_service.generate_sql` (cached SQL re-checked by `is_select_only`; **approval still happens**) and `execute_sql` (safety check first, then the cache); `graph.run_agent` / `resume_agent` each open a fresh trace. The hybrid path's CRAG grading and the SQL/hybrid answer call are **not** cached (only their SQL and rows are).
+  - `services/doc_cache_service.py` — `compute_content_hash` / `compute_file_hash` (8 KB blocks); records `docs/<hash>.json` {source, chunks, max_pages, ingested_at} and `sources/<sha256(source)>.json` {hash}; `find_ingested(hash, max_pages)` counts only if that source still points at this hash and the page cap matches (a replaced file's old content doesn't count); callers use async `find_indexed`, which also requires Qdrant to hold that source's recorded chunk count (`./cache` outlives `docker compose down -v`; a Qdrant error → ingest). Fail-soft. `storage/`: `get_storage_backend()` (`STORAGE_BACKEND` local|s3), `LocalStorage(LOCAL_STORAGE_DIR=./cache)` blocks path traversal and writes atomically; `S3Storage` (boto3, not tested live). `./cache` is gitignored, dockerignored and bind-mounted into the api container (shared with `make seed` on the host).
+  - Upload: the same bytes, still indexed → 200 with `already_ingested: true` (no Docling); otherwise ingest, record the hash, and clear the rag_answer tier (cached answers didn't know the new doc). Seed: hash each file → skip if ingested; a source already in Qdrant without a hash record (pre-Phase 5) → hash recorded with `vector_store.count_source`, not re-ingested; a changed file → `delete_source`, then upsert. Live 2026-10-26: the 1st seed recorded 195 hashes in 27 s, the 2nd skipped all 195 (the 2 image-only noise PDFs are retried each time, ~5 s each).
+  - Admin: `GET /admin/cache/stats` (hit_rate as "%"), `POST /admin/cache/clear?tier=` (tier validated; 503 if Redis fails). Eval: `--clear-cache` (cold run) / `--no-cache`; rows store `cache_hits`, `cost_saved_usd`; aggregate `answer_cache_hit_rate` (rag_answer hits only: no LLM call at all), `sql_result_cache_hit_rate` (rows with SQL), `cost_saved_usd`; checkpoints are per cache mode (`defaults_cold.json`, `defaults_off.json`, `defaults.json`) and a resumed cold run doesn't clear the cache again; the result file has `cache` {enabled, cleared_before_run, stats}; `AgentInvoker` merges the hits of run + resume. `make eval-cold` / `make eval-warm`.
+  - Live Done-when checks (2026-10-26, API on the host, ~22k 120b tokens ≈ $0.01): "What is a StatefulSet?" cold 7.1 s / 4,579 tokens → again **9.4 ms server latency** (108 ms wall, incl. the rate limiter's Upstash round trip and the Postgres writes), 0 tokens, `cache_hits {intent, rag_answer}`; other spacing/case → hit; CRAG off → rag_answer miss (intent + embedding hit); a SQL question twice → still paused for approval, the 2nd with sql_gen + sql_result hits; `/admin/cache/clear` deleted the 7 Redis keys (0 left); without `UPSTASH_*` → backend `memory`, a repeat in 14–18 ms server / 82 ms wall.
 - `security/system_prompt.py` — basic prompt: answer only from context, cite as plain `[1]`/`[2][3]` (gpt-oss otherwise uses its own `【1†L1-L7】` style), say you don't know otherwise.
 - `api/query.py` — `GET /query/defaults` (public: the default flags = `rag_service.DEFAULT_FLAGS`; Streamlit starts its toggles from it, with a fallback if the API is down), `POST /query` (`QueryRequest` → `ChatResponse`): `get_current_user`, per-user `RateLimiter(name="query")` (`RATE_LIMIT_REQUESTS`/`RATE_LIMIT_WINDOW_SECONDS`, 429 + Retry-After), `ValueError` → 400.
 - `api/documents.py` — `POST /documents/upload` (admin; extension in `SUPPORTED_EXTENSIONS`, ≤ 20 MB → 413, empty → 400; only the base file name is used; Docling runs in a thread; old chunks of the same source are deleted before upsert; unreadable → 422), `GET /documents` (any user; distinct sources). Docling loads once (`get_processor`, lru_cache) on first upload.
@@ -134,7 +153,7 @@ Dockerfile, .dockerignore, docker-compose.yml, Makefile
 ## Git / GitHub
 
 - Remote: `origin` → https://github.com/Sarthak290210/K8-copilot-Enterprise-RAG- (public; note capital `K` and trailing `-` in the repo name). Default branch `main` (renamed from `master`), tracking `origin/main`.
-- History: `ae5071f feat: scaffold k8-copilot API foundation` (pushed 2026-10-21), then `568b58a feat: phase 0-1 - basic dense RAG, eval harness, E1 baseline` (70 files, pushed 2026-10-22), then `cc13a43 phase 2: hybrid search(BM25 + RRF), reranking, E2 evals` (22 files, pushed 2026-10-23), then `1124d43 feat: phase 3 - HyDE, CRAG, Self-RAG, Tavily web search, E3 evals` (35 files, pushed 2026-10-26). Use conventional-commit style messages (`feat:`, `fix:`, `docs:` ...).
+- History: `ae5071f feat: scaffold k8-copilot API foundation` (pushed 2026-10-21), then `568b58a feat: phase 0-1 - basic dense RAG, eval harness, E1 baseline` (70 files, pushed 2026-10-22), then `cc13a43 phase 2: hybrid search(BM25 + RRF), reranking, E2 evals` (22 files, pushed 2026-10-23), then `1124d43 feat: phase 3 - HyDE, CRAG, Self-RAG, Tavily web search, E3 evals` (35 files, pushed 2026-10-26). Phase 4: `ac8258f phase 4 - Text2SQL + intent routing + LangGraph agent (human approval)` (user's commit, 19 files) + `6fe3052 feat: phase 4 - query_threads migration, read-only login, approval UI, tests, E4` (10 files it missed), both pushed 2026-10-26. Use conventional-commit style messages (`feat:`, `fix:`, `docs:` ...).
 - Not committed yet: `seed/docs/` (both `true_data/` and `noisy_data/`; user: "we will see that later"; noisy_data is third-party copyrighted PDFs, so a public repo should get a manifest of the sampled file names, not the files). `eval/results/*.json` **are committed** (user's choice). Never commit `.env`, `.venv/`, `__pycache__/`, `.ruff_cache/` (all ignored). Note: the local `POSTGRES_PASSWORD` is the default word `postgres` (ports are bound to 127.0.0.1).
 - Git on this machine has `core.autocrlf=true`, so `git add` warns "LF will be replaced by CRLF". Harmless for the repo (stored as LF); adding a `.gitattributes` with `* text=auto eol=lf` would keep LF in the working tree for files copied into Linux containers. Not added yet.
 - The repo is public: anything committed is visible. Before committing, check `git status` shows no `.env`.
@@ -199,21 +218,38 @@ A full `/code-review` found 10 issues; the user chose to fix 8, redesign 2 (#3, 
 | 9 | eval checkpoint key ignored Phase 3 settings | `run_ragas.pipeline_settings()` (grader, CRAG thresholds, reflection, HyDE, RRF, reranker) in the key and the result file |
 | 10 | `[n]` passage formatting copied 3× | `services/passages.format_passages` |
 
+## Code review fixes (2026-10-26, Phase 5)
+
+A `/code-review` of Phase 5 found 10 issues; the user chose to fix 7 (#4 stale answers after `make seed` / in other workers' memory, #8 the pre-Phase-5 backfill trusting the current file, #10 no S3 tests: postponed). 334 tests, ruff + pyright clean; a read-only check against the live Qdrant: the stricter dedup still skips all 195 recorded files.
+
+| # | Issue | Fix |
+|---|---|---|
+| 1 | `normalize_sql` lowercased quoted values: `'Running'` and `'running'` shared cached rows | case/spaces folded only outside `'…'` / `"…"` |
+| 2 | "already ingested" never checked Qdrant: after `down -v` the seed skipped everything | `DocCacheService.find_indexed`: also needs the recorded chunk count in Qdrant |
+| 3 | cold / warm / `--no-cache` runs shared one checkpoint; resuming a cold run cleared the cache again | checkpoint key + file per cache mode; no clear when resuming |
+| 5 | answer cache key missed answer-changing settings (CRAG thresholds, RRF_K, reranker, ...) | `rag_service.pipeline_settings()` in the key (`RAG_CACHE_VERSION` 2) |
+| 6 | cached SQL ignored today's date and the schema prompt ("last month" across midnight) | both in the sql_gen key |
+| 7 | `answer_cache_hit_rate` counted SQL-result hits whose answer call still ran | rag_answer only; new `sql_result_cache_hit_rate`; E5 corrected in its notes |
+| 9 | model-written "I don't know" answers were cached for 1 h | not cached (`_MODEL_DECLINE`) |
+
+Seen while fixing (not changed): `SQLService` builds its schema prompt once per process, so a long-running API keeps the startup date as "Current date"; the sql_gen key now includes the real date, so a cache hit never crosses midnight, but the prompt's date is still the startup one.
+
 ## Known gaps / next steps
 
 - **CRAG web fallback is limited to Kubernetes / IT-ops questions** (user's rule 2026-10-26, see `crag.py`): off-topic requests the docs can't answer are declined with no web search. Phase 6 still adds the real input guard (prompt injection, toxicity) and spotlighting of web text. **Goldens changed (user, 2026-10-26):** q-017 (Seattle weather) and q-018 (quantum entanglement) re-tagged from `crag`/`web_fallback` (golden source `tavily_web`) to `security`/`rag` "should decline" goldens with forbidden keywords; crag goldens are now q-019, q-020 only. So E3's crag numbers aren't directly comparable with E4+ on those two IDs. Self-RAG stays **off by default** (user: manual toggle only).
-- Not started: cache layer and its admin endpoints (Phase 5), llm-guard security layers (Phase 6).
-- Phase 4 follow-ups: the Docker api image must be rebuilt (new deps `sqlglot`, plus the `COPILOT_RO_PASSWORD` env); checkpoint rows and `query_threads` are never cleaned up (add a TTL job later); `metadata.latency_ms` of SQL answers includes the time the human took to approve; every question now costs one extra routing call (5 req/min on the 120b model).
+- Not started: llm-guard security layers (Phase 6), final comparison (Phase 7). Phase 5 is done (E5 recorded), not committed.
+- Phase 5 follow-ups (code review, postponed): `make seed` doesn't drop cached answers, and `/admin/cache/clear` empties only one worker's memory copy (a corpus version number stored in Redis, in the rag_answer key, would fix both); the backfill records the current file's hash without checking Qdrant has that version; `S3Storage` / `storage_backend.py` have no tests.
+- Phase 4 follow-ups: checkpoint rows and `query_threads` are never cleaned up (add a TTL job later); `metadata.latency_ms` of SQL answers includes the time the human took to approve; every question now costs one extra routing call (5 req/min on the 120b model).
 - Phase 3 profiles (user's choice): `hybrid+hyde`, `hybrid+crag`, `all` = hybrid + HyDE + CRAG + Self-RAG, all **without** rerank (plan.md's names had `+rerank`; Makefile updated). In eval rows, web chunks count as source `tavily_web` (the crag goldens' marker), and each row stores `tokens_used`, `confidence`, `crag_action`, `reflection_iterations`, `hyde_hypotheses`.
-- The free **retrieval-only replay** used in the E2 investigation (ID-based ctx precision/recall over the goldens, 0 LLM tokens; `rerank_offline.py` / `rerank_models.py`) lives only in the session scratchpad, not in the repo. Worth adding as e.g. `eval/retrieval_replay.py` before Phase 3 so retrieval changes can be screened for free.
+- The free **retrieval-only replay** used in the E2 investigation (ID-based ctx precision/recall over the goldens, 0 LLM tokens; `rerank_offline.py` / `rerank_models.py`) lives only in the session scratchpad, not in the repo. The latest is `rerank_gte.py` (2026-10-26). Worth adding as `eval/retrieval_replay.py` so retrieval changes can be screened for free.
 - `python -m eval.diff` crashes on the Windows console (cp1252 can't print `→`/`▼`): run it with `PYTHONIOENCODING=utf-8` until it's fixed.
-- `/query` and the Streamlit UI (`CURRENT_PHASE = 2`, Phase 2 toggles enabled) were only exercised through tests and the eval since the Cerebras switch, not live through the API.
-- Rate limiting only on `/auth/login` and `/auth/register`. The general per-user limit (`RATE_LIMIT_REQUESTS` / `RATE_LIMIT_WINDOW_SECONDS`) and `MAX_TOKENS_PER_USER_DAILY` aren't wired to any route. Behind Docker's NAT every host request shares one IP (`172.18.0.1`).
+- The Streamlit UI (`CURRENT_PHASE = 4`: flag toggles from `GET /query/defaults`, pending-SQL approval card) is covered by ruff/pyright only, not exercised live yet.
+- Rate limiting: per IP on `/auth/login` and `/auth/register`, per user on `POST /query` and `POST /query/sql/execute` (`RATE_LIMIT_REQUESTS` / `RATE_LIMIT_WINDOW_SECONDS`). `MAX_TOKENS_PER_USER_DAILY` isn't wired yet (Phase 6 token budget). Behind Docker's NAT every host request shares one IP (`172.18.0.1`).
 - `X-RateLimit-*` headers are added on success and on 429, but not on other error responses (e.g. a wrong-password 401).
 - The Dockerfile `HEALTHCHECK` hardcodes port 8000; setting `API_PORT` would make the container report unhealthy.
 - Admin status is read from the JWT, so promotions/demotions apply only after re-login.
-- **LLM provider: Cerebras since 2026-10-22.** Groq's free tier allowed only 200k tokens/day per model (one E1 run needs ~265k+), its Developer tier was closed ("temporarily unavailable"), and its `qwen/qwen3.8-27b` had a hidden 1,000 output-tokens/minute limit that rejected judge requests. Cerebras free trial limits seen in response headers: `gpt-oss-120b` **5 requests/min, 150/hour, 2,400/day, 30k tokens/min, 1M tokens/day**; `qwen-3.8-27b` 450 requests/min, 150k tokens/min, 216M tokens/day. Cerebras has no gpt-oss-20b. The answer model's 5 req/min (150/hour) is the bottleneck: ~35 answer calls per E1 run. The free trial needs a verified payment method; its $5 credit expires 30 days after it's granted. The Docker api image must be rebuilt (`groq` → `openai` dependency) before the container is used again.
-- **Cerebras $5 trial credit** (every token is deducted; check the exact balance at cloud.cerebras.ai → Billing): estimated spend so far ≈ E1 $0.70 (qwen thinking on, ~600k judge tokens) + E2 ~$1.00 (3 runs × ~$0.34) + checks ≈ **$1.8 used, ~$3.2 left** (estimates from aggregator prices: qwen ~$0.99/M in, $1.49/M out; 120b ~$0.35/$0.75). Remaining E3–E6 ≈ 8 runs ≈ $2.4–2.8, so there's room for only ~1 re-run: screen retrieval changes with the free replay first. The credit expires 30 days after it was granted (~2026-11-21).
+- **LLM provider: Cerebras since 2026-10-22.** Groq's free tier allowed only 200k tokens/day per model (one E1 run needs ~265k+), its Developer tier was closed ("temporarily unavailable"), and its `qwen/qwen3.8-27b` had a hidden 1,000 output-tokens/minute limit that rejected judge requests. Cerebras free trial limits seen in response headers: `gpt-oss-120b` **5 requests/min, 150/hour, 2,400/day, 30k tokens/min, 1M tokens/day**; `qwen-3.8-27b` 450 requests/min, 150k tokens/min, 216M tokens/day. Cerebras has no gpt-oss-20b. The answer model's 5 req/min (150/hour) is the bottleneck: ~35 answer calls per E1 run. The free trial needs a verified payment method; its $5 credit expires 30 days after it's granted.
+- **Cerebras $5 trial credit** (every token is deducted; check the exact balance at cloud.cerebras.ai → Billing): estimated spend so far ≈ E1 $0.70 (qwen thinking on, ~600k judge tokens) + E2 ~$1.00 (3 runs × ~$0.34) + E3 ~$0.50 + E4 ~$0.35 + live checks ~$0.11 + E5 ~$0.50 (cold 192k 120b tokens + judge, refill 125k, warm 39k + judge) ≈ **$3.15 used, ~$1.85 left** (estimates from aggregator prices: qwen ~$0.99/M in, $1.49/M out; 120b ~$0.35/$0.75; the real balance hasn't been checked). Remaining with the `defaults` profile (user's choice for the budget): E6 subset + full ≈ $0.40 → ≈ $1.4 buffer for re-runs and Phase 7; screen retrieval changes with the free replay first. The credit expires 30 days after it was granted (~2026-11-21).
 - Not written yet (later phases): `scripts/data_pipeline/` (for `make seed-data`, also the generator of `002_k8s_ops.sql`).
 - `openai`, `vanna` and `psycopg2-binary` were removed from `pyproject.toml` (unused; Text2SQL is planned as our own `sql_service`). The `vanna_*` settings remain in `config.py` / `.env` but nothing reads them.
 - `eval/seed_questions.yaml` is the original (unfixed) golden file, superseded by `eval/golden_questions.yaml`; kept for reference, not used by any code.
@@ -235,9 +271,9 @@ A full `/code-review` found 10 issues; the user chose to fix 8, redesign 2 (#3, 
 - Logging: loguru
 - Eval: Ragas 0.4.3 (dev extra) judged by Cerebras qwen via langchain-openai
 
-## Planned retrieval pipeline (from `.env` / Makefile)
+## Retrieval pipeline and agent (from `.env` / Makefile)
 
-Feature-flagged stages, evaluated as RAGAS profiles: `naive` ✅ (E1) → `hybrid` ✅ (dense + sparse, RRF fusion; E2 best) → `hybrid+rerank` ✅ built, but hurts on this corpus (off by default) → `+hyde` (hypothetical doc embeddings) → `+crag` (corrective RAG with relevance thresholds + web fallback) → self-reflective answering with retry. Defaults are toggled via `HYBRID_SEARCH_ENABLED` and the `*_ENABLED_BY_DEFAULT` env vars (since E3: hybrid + CRAG on, the rest off).
+Feature-flagged stages, evaluated as RAGAS profiles: `naive` ✅ (E1) → `hybrid` ✅ (dense + sparse, RRF fusion; E2 best) → `hybrid+rerank` ✅ built, but hurts on this corpus (off by default) → `+hyde` ✅ (hypothetical doc embeddings) → `+crag` ✅ (corrective RAG; web only for Kubernetes / IT-ops questions) → Self-RAG ✅ (4 criteria, < 0.8 → refine and retry) → `all` ✅ (E3 best) → Phase 4 agent ✅: routing (sql / rag / hybrid) + Text2SQL with human approval, evaluated with `defaults` (E4). Defaults are toggled via `HYBRID_SEARCH_ENABLED` and the `*_ENABLED_BY_DEFAULT` env vars (since E3: hybrid + CRAG on, the rest off).
 
 ## Make targets
 
@@ -251,7 +287,8 @@ make api                 # uvicorn on :8000 (reload, selector loop)
 make test                # uv run pytest tests/ -v
 make lint / format       # ruff check . / ruff format .
 make validate            # uv run python -m eval.schema
-make eval-baseline|sparse|hybrid|rerank|hyde|crag|all   # one eval profile
+make eval-baseline|sparse|hybrid|rerank|hyde|crag|all|defaults   # one eval profile (Phase 4+: through the agent; --rag-only = RAG pipeline alone)
+make eval-cold / eval-warm                              # E5: defaults with --clear-cache, then again (cache warm); --no-cache skips the cache
 make eval-diff A=<a.json> B=<b.json>                    # uv run python -m eval.diff A B
 make eval-record FILE=<json> PHASE=<n> NOTE="..."       # uv run python -m eval.record ...
 make streamlit                                          # uv run streamlit run scripts/streamlit_app.py (UI on :8501)
@@ -303,10 +340,10 @@ Harness notes (`eval/ragas_adapter.py`; first verified 2026-10-22 with Groq, now
 | E0 | 0 | Harness smoke test (no RAG yet) | `naive` (all rows skipped) |
 | **E1** | 1 | **Basic RAG (dense) — BASELINE** | `naive` |
 | E2 | 2 | Sparse, hybrid RAG (dense + BM25 + RRF), and reranking | `sparse_only`, `hybrid`, `hybrid+rerank` |
-| E3 | 3 | HyDE, CRAG, Self-RAG | `hybrid+hyde --filter hyde`, `hybrid+crag --filter crag`, `all` (no rerank) |
-| E4 | 4 | Text2SQL + intent routing | `all` (with sql + hybrid goldens) |
-| E5 | 5 | Caching | `all` cold, then `all` warm |
-| E6 | 6 | Security layers | `all --filter security`, then `all` |
+| E3 | 3 | HyDE, CRAG, Self-RAG | `hybrid+hyde --filter hyde`, `hybrid+crag --filter crag`, `all` (no rerank) ✅ |
+| E4 | 4 | Text2SQL + intent routing | `defaults` (user's choice; all 44 goldens incl. sql + hybrid) ✅ |
+| E5 | 5 | Caching | `defaults` cold, then `defaults` warm |
+| E6 | 6 | Security layers | `defaults --filter security`, then `defaults` |
 
 ### Baseline (E1, `naive`)
 
@@ -326,6 +363,8 @@ Harness notes (`eval/ragas_adapter.py`; first verified 2026-10-22 with Groq, now
 | 2026-10-22 20:49 | 3 | hybrid+crag (filter: crag) | 8/0 | 0.743 | 0.875 | 0.938 | 0.796 | 0.938 | 0 | 45660.825 | `eval/results/20261022T204900Z_hybrid+crag.json` | hybrid+crag --filter crag (crag+baseline goldens, 8 q; strictness 1) |
 | 2026-10-22 22:00 | 3 | all | 35/9 | 0.657 | 0.735 | 0.703 | 0.784 | 0.703 | 2 | 99174.134 | `eval/results/20261022T220047Z_all.json` | all = hybrid+HyDE+CRAG+Self-RAG, no rerank (strictness 1, paced 24 s) |
 | 2026-10-25 22:56 | 4 | defaults | 44/0 | 0.577 | 0.793 | 0.772 | 0.764 | 0.752 | 0 | 70939.189 | `eval/results/20261025T225611Z_defaults.json` | defaults = hybrid+CRAG through the agent (routing + Text2SQL, SQL auto-approved); 44 q incl. 9 sql/hybrid; intent_acc 0.977, sql_kw 1.0 |
+| 2026-10-26 16:46 | 5 | defaults | 44/0 | 0.695 | 0.791 | 0.793 | 0.775 | 0.752 | 0 | 70418.364 | `eval/results/20261026T164650Z_defaults.json` | E5 cold cache: defaults (hybrid+CRAG) via agent, --clear-cache, resumed after a low-memory stop at 29/44 |
+| 2026-10-26 17:46 | 5 | defaults | 44/0 | 0.642 | 0.791 | 0.793 | 0.755 | 0.752 | 0 | 12681.911 | `eval/results/20261026T174657Z_defaults.json` | E5 warm cache: same defaults run after a refill (37/44 answers cached; 6 answers regenerated by the refill) |
 <!-- EVAL-LOG:END -->
 
 ### Eval Observations
@@ -379,7 +418,11 @@ Harness notes (`eval/ragas_adapter.py`; first verified 2026-10-22 with Groq, now
 - **Done (user, 2026-10-26):** the SQL context chunk now reads `Query: <sql>` / `What it computes: <explanation>` / `Results:` + rows (`graph._sql_chunk`), so from E5 on the judge can check what a number means; E4's SQL faithfulness stays as recorded (not comparable on the 9 sql/hybrid rows). Action for Phase 5: E5 compares cold vs warm cache with the same `defaults` profile.
 
 #### E5 — caching (cold vs warm)
-_Not run yet._
+- **Cold** (2026-10-26 18:48–22:17 local, `defaults` through the agent, `--clear-cache`, paced 24 s, `CACHE_TTL_RAG` / `CACHE_TTL_SQL_RESULT` raised to 3 h for this run only, user's choice): Claude Code stopped it for low memory at 29/44 answers; resumed from the checkpoint (without `--clear-cache`, so its result file says `cleared_before_run: false`). 44 evaluated, 0 errors, 0 forbidden: faith **0.695** / prec 0.791 / rec 0.793 / rel 0.775, intent_accuracy 0.977, sql_kw 1.0, 192k 120b tokens. vs E4 (0.577 / 0.793 / 0.772 / 0.764): faith +0.118, mostly the SQL context chunk now showing the query and what it computes (the E4 fix).
+- **Refill**: because of the stop, the first 29 cached answers had expired (3 h) before the warm run could start, so (user's choice) an answers-only pass (scratchpad `e5_refill.py`, no judging, 125k tokens) re-cached them. It regenerated 6 answers (q-007, q-014, q-015, q-038, q-030, q-031: the CRAG web results and the LLM sample differ run to run).
+- **Warm** (22:56–23:16 local): **answer_cache_hit_rate 0.841** as recorded (37/44), **corrected 0.614 (27/44)**: the recorded metric also counted the 10 SQL/hybrid rows whose SQL results came from the cache, but those still made their answer LLM call (code-review fix #7, 2026-10-26; the log row is left as recorded). The other 7 are declines / clarify / out-of-scope answers, never cached by design. sql_result hit rate 100% (10/10), intent 95%, sql_gen / sql_result / embedding 100%. **Mean latency 70.4 s → 12.7 s; cached answers median 72 s → 0.1 s**; 120b tokens 192k → **39k** (−80%; what's left is the 2 uncached routings, the 7 uncacheable answers and the hybrid path's CRAG + answer calls); `cost_saved_usd` 0.077 (at the $0.5/M estimate). Retrieval metrics identical (prec 0.791, rec 0.793, overlap 0.752), forbidden 0, intent_accuracy 0.977.
+- **Regression rule triggered: faithfulness 0.695 → 0.642 (−0.053)**, relevancy −0.020. Investigated: not the cache. On the **38 identical answers** faith 0.668 → 0.646 and relevancy 0.756 → 0.756: judge noise on the same text (q-034 1.0 → 0.44, q-040 0.69 → 0.35). On the **6 answers the refill regenerated** faith 0.869 → 0.614, relevancy 0.892 → 0.745: q-038 (CRAG `incorrect` → web) got different Tavily results and answered "I don't know" (faith/rel 1.0 → 0); q-015 switched from a systemd answer to a Deployment answer. So the warm run is a fair measure of speed and cost, but its quality numbers mix in a re-sampled answer set; a cache returns exactly what it stored (31 of 37 hits = the cold answers word for word).
+- Action for Phase 6: E6 should compare on the same question IDs and expect ±0.05 faithfulness noise from the judge alone; CRAG's web results make web-routed answers (q-020, q-038) unstable between runs.
 
 #### E6 — security
 _Not run yet._

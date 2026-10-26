@@ -26,7 +26,7 @@ def fakes(monkeypatch):
     async def embed_query(question):
         return ["q"]
 
-    async def embed_texts(texts):
+    async def embed_texts(texts, cache=False):
         state["embedded_docs"] = list(texts)
         return [[f"h{i}"] for i in range(len(texts))]
 

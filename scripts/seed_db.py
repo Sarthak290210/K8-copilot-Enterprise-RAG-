@@ -125,8 +125,11 @@ async def _ingest_one(
     total: int,
     counters: dict[str, int],
     max_pages: int | None = None,
-) -> None:
-    """Process -> embed -> upsert one file. Errors are counted, never fatal."""
+    replace: bool = False,
+) -> int | None:
+    """Process -> embed -> upsert one file; returns the chunk count, or None on failure.
+    Errors are counted, never fatal. `replace` deletes the source's old chunks first (a changed
+    file must not leave stale chunks behind)."""
     from app.services import embedding_service, vector_store
 
     start = time.perf_counter()
@@ -135,11 +138,13 @@ async def _ingest_one(
         if not chunks:
             raise ValueError("no text extracted")
         vectors = embedding_service.embed_texts_sync([c["text"] for c in chunks])
+        if replace:
+            await vector_store.delete_source(src.name)
         await vector_store.upsert_chunks(chunks, vectors)
     except Exception as exc:
         counters["failed"] += 1
         logger.warning("[{}/{}] {} FAILED: {}: {}", idx, total, src.name, type(exc).__name__, exc)
-        return
+        return None
     counters["files"] += 1
     counters["chunks"] += len(chunks)
     logger.info(
@@ -150,12 +155,14 @@ async def _ingest_one(
         len(chunks),
         time.perf_counter() - start,
     )
+    return len(chunks)
 
 
 async def _seed_docs(
     noise_sample_size: int | str, noise_max_pages: int | None, skip_existing: bool
 ) -> dict[str, int]:
     from app.services import vector_store
+    from app.services.doc_cache_service import DocCacheService, compute_file_hash
     from app.services.document_processor import DocumentProcessor
 
     client = vector_store.get_client()
@@ -164,8 +171,8 @@ async def _seed_docs(
         signal, noise = _select_corpus(noise_sample_size)
         # (file, page cap, is_noise)
         jobs = [(f, None, False) for f in signal] + [(f, noise_max_pages, True) for f in noise]
+        existing = set(await vector_store.list_sources())
         if skip_existing:
-            existing = set(await vector_store.list_sources())
             jobs = [job for job in jobs if job[0].name not in existing]
         logger.info(
             "Ingesting {} signal + {} noise files ({} to do; noise capped at {} pages)",
@@ -177,11 +184,41 @@ async def _seed_docs(
         # Noise PDFs skip Docling's table-structure model: on table-heavy manuals it took
         # 7+ min per 30 pages, and noise only needs to be realistic text, not parsed tables.
         processors: dict[bool, DocumentProcessor] = {}
-        counters = {"files": 0, "chunks": 0, "failed": 0}
+        counters = {"files": 0, "chunks": 0, "failed": 0, "skipped": 0, "recorded": 0}
+        doc_cache = DocCacheService()
         for idx, (src, max_pages, is_noise) in enumerate(jobs, start=1):
+            # Dedup by content (Phase 5): the same bytes with the same page cap are skipped.
+            content_hash = compute_file_hash(src)
+            if await doc_cache.find_indexed(content_hash, max_pages) is not None:
+                counters["skipped"] += 1
+                logger.debug("[{}/{}] {} already ingested; skipped", idx, len(jobs), src.name)
+                continue
+            if src.name in existing and doc_cache.source_hash(src.name) is None:
+                # Ingested before Phase 5 (no hash record yet): record its hash instead of
+                # re-ingesting it (user's choice 2026-10-26; ~3 h of Docling otherwise).
+                chunks = await vector_store.count_source(src.name)
+                doc_cache.set_metadata(
+                    content_hash,
+                    {"source": src.name, "chunks": chunks, "max_pages": max_pages,
+                     "recorded_without_ingest": True},
+                )  # fmt: skip
+                counters["recorded"] += 1
+                continue
             if is_noise not in processors:
                 processors[is_noise] = DocumentProcessor(table_structure=not is_noise)
-            await _ingest_one(processors[is_noise], src, idx, len(jobs), counters, max_pages)
+            indexed = await _ingest_one(
+                processors[is_noise], src, idx, len(jobs), counters, max_pages,
+                replace=src.name in existing,
+            )  # fmt: skip
+            if indexed is not None:
+                doc_cache.set_metadata(
+                    content_hash, {"source": src.name, "chunks": indexed, "max_pages": max_pages}
+                )
+        logger.info(
+            "Skipped {} already-ingested files; recorded hashes for {} older ingests",
+            counters["skipped"],
+            counters["recorded"],
+        )
         counters["points_in_collection"] = await vector_store.count_points()
         return counters
     finally:

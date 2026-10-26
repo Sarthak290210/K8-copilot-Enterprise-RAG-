@@ -43,6 +43,7 @@ from app.models import (
 from app.security.system_prompt import build_system_prompt
 from app.services import llm_service, rag_service
 from app.services.passages import format_passages
+from app.services.query_cache_service import CacheTrace, cache_scope
 from app.services.router_service import classify_intent
 from app.services.sql_service import (
     SQLGenerationError,
@@ -340,21 +341,24 @@ def _config(query_id: uuid.UUID) -> dict[str, Any]:
     return {"configurable": {"thread_id": str(query_id)}}
 
 
-def _to_result(state: dict[str, Any], query_id: uuid.UUID) -> AgentResult:
+def _to_result(state: dict[str, Any], query_id: uuid.UUID, trace: CacheTrace) -> AgentResult:
+    """`trace` = the cache hits of this call (a resumed run reports the resume's hits)."""
     interrupts = state.get("__interrupt__") or []
     if interrupts:
         payload = interrupts[0].value
-        return AgentResult(
-            ChatResponse(
-                answer=PENDING_ANSWER,
-                query_id=query_id,
-                pending_sql=PendingSQLBlock(query_id=query_id, **payload),
-                metadata=ResponseMetadata(intent=payload["intent"], tokens_used=state["tokens"]),
-            )
+        response = ChatResponse(
+            answer=PENDING_ANSWER,
+            query_id=query_id,
+            pending_sql=PendingSQLBlock(query_id=query_id, **payload),
+            metadata=ResponseMetadata(intent=payload["intent"], tokens_used=state["tokens"]),
         )
-    response = ChatResponse.model_validate(state["response"])
-    response.query_id = query_id
-    chunks = [RetrievedChunk.model_validate(c) for c in state.get("final_chunks", [])]
+        chunks: list[RetrievedChunk] = []
+    else:
+        response = ChatResponse.model_validate(state["response"])
+        response.query_id = query_id
+        chunks = [RetrievedChunk.model_validate(c) for c in state.get("final_chunks", [])]
+    response.metadata.cache_hits = dict(trace.hits)
+    response.metadata.cost_saved_usd = trace.cost_saved_usd
     return AgentResult(response, chunks)
 
 
@@ -373,7 +377,8 @@ async def run_agent(
         "started_at": time.time(),
         "tokens": 0,
     }
-    return _to_result(await graph.ainvoke(state, _config(query_id)), query_id)
+    with cache_scope(fresh=True) as trace:
+        return _to_result(await graph.ainvoke(state, _config(query_id)), query_id, trace)
 
 
 async def is_waiting_for_approval(graph: Any, query_id: uuid.UUID) -> bool:
@@ -386,4 +391,6 @@ async def resume_agent(
 ) -> AgentResult:
     """Resume a paused run with the human's decision."""
     decision = {"approved": approved, "edited_sql": edited_sql}
-    return _to_result(await graph.ainvoke(Command(resume=decision), _config(query_id)), query_id)
+    with cache_scope(fresh=True) as trace:
+        result = await graph.ainvoke(Command(resume=decision), _config(query_id))
+        return _to_result(result, query_id, trace)

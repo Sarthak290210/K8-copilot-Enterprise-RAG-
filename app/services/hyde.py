@@ -73,7 +73,9 @@ class HyDERetriever:
             self.generate_hypotheses(question), embedding_service.embed_query(question)
         )
         hypothesis_vectors = (
-            await embedding_service.embed_texts(self.hypotheses) if self.hypotheses else []
+            await embedding_service.embed_texts(self.hypotheses, cache=True)
+            if self.hypotheses
+            else []
         )
         ranked_lists = list(
             await asyncio.gather(

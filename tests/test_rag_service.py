@@ -434,3 +434,62 @@ async def test_self_rag_metadata_describes_the_returned_attempt(fakes, monkeypat
     assert response.sources == ["pods.html"]  # attempt 1 scored best
     assert response.metadata.crag == good and response.metadata.hyde_hypotheses == ["passage 1"]
     assert response.confidence == 0.7 and response.metadata.reflection_iterations == 2
+
+
+# ---------------- Phase 5: rag_answer cache ----------------
+
+
+async def test_repeat_question_is_served_from_the_cache(fakes, cache_on):
+    fakes["chunks"] = [chunk("pods.html", "Pods are the smallest units.", 0.9)]
+    first, _ = await rag_service.run_rag_with_trace("What is a Pod?")
+    assert first.metadata.cache_hits == {"rag_answer": False}
+    second, traced = await rag_service.run_rag_with_trace("  what is a pod? ")
+    assert len(fakes["llm_calls"]) == 1  # no second LLM call
+    assert second.answer == first.answer and second.sources == first.sources
+    assert traced == fakes["chunks"]  # full chunks come back too (eval contexts)
+    meta = second.metadata
+    assert meta.cache_hits == {"rag_answer": True}
+    assert meta.tokens_used == 0 and meta.cost_saved_usd == pytest.approx(100 * 0.5 / 1e6)
+
+
+async def test_changing_a_flag_misses_the_cache(fakes, cache_on):
+    fakes["chunks"] = [chunk("pods.html", "Pods are the smallest units.", 0.9)]
+    await rag_service.run_rag_with_trace("What is a Pod?")
+    response, _ = await rag_service.run_rag_with_trace("What is a Pod?", {"top_k": 3})
+    assert response.metadata.cache_hits == {"rag_answer": False}
+    assert len(fakes["llm_calls"]) == 2
+
+
+async def test_answers_without_context_are_not_cached(fakes, cache_on):
+    await rag_service.run_rag_with_trace("What is a Pod?")  # no chunks -> NOT_FOUND
+    fakes["chunks"] = [chunk("pods.html", "Pods are the smallest units.", 0.9)]
+    response, _ = await rag_service.run_rag_with_trace("What is a Pod?")
+    assert response.answer == "A Pod is ... [1]"  # retried for real, not the cached refusal
+
+
+def test_model_written_declines_are_not_cached():
+    """'I don't know' with chunks (q-009/q-036-style) would otherwise stick for CACHE_TTL_RAG."""
+    chunks = [chunk("pods.html", "Pods are the smallest units.", 0.9)]
+    assert rag_service._cacheable("A Pod is ... [1]", chunks)
+    assert not rag_service._cacheable("I don't know.", chunks)
+    assert not rag_service._cacheable("I don’t know based on the context.", chunks)
+    assert not rag_service._cacheable(rag_service.NOT_FOUND_ANSWER, chunks)
+    assert not rag_service._cacheable("A Pod is ... [1]", [])
+    assert rag_service._cacheable("If you don't know the pod name, run kubectl get pods.", chunks)
+
+
+async def test_changing_a_pipeline_setting_misses_the_cache(fakes, cache_on, monkeypatch):
+    """CRAG thresholds, RRF_K, reranker... change answers, so they're in the key too."""
+    fakes["chunks"] = [chunk("pods.html", "Pods are the smallest units.", 0.9)]
+    await rag_service.run_rag_with_trace("What is a Pod?")
+    monkeypatch.setattr(rag_service.settings, "rrf_k", 30)
+    response, _ = await rag_service.run_rag_with_trace("What is a Pod?")
+    assert response.metadata.cache_hits == {"rag_answer": False}
+    assert len(fakes["llm_calls"]) == 2
+
+
+async def test_cache_disabled_always_runs_the_pipeline(fakes):
+    fakes["chunks"] = [chunk("pods.html", "Pods are the smallest units.", 0.9)]
+    await rag_service.run_rag_with_trace("What is a Pod?")
+    response, _ = await rag_service.run_rag_with_trace("What is a Pod?")
+    assert len(fakes["llm_calls"]) == 2 and response.metadata.cache_hits == {}
