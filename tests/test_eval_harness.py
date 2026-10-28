@@ -6,7 +6,13 @@ from typing import cast
 import pytest
 from ragas.dataset_schema import SingleTurnSample
 
-from app.models import ChatResponse, CRAGEvaluation, ResponseMetadata, RetrievedChunk
+from app.models import (
+    ChatResponse,
+    CRAGEvaluation,
+    GroundingResult,
+    ResponseMetadata,
+    RetrievedChunk,
+)
 from eval import ragas_adapter, record
 from eval.diff import diff_results, row_passed
 from eval.invokers import AgentInvoker, ServiceInvoker, SkippedIntent
@@ -170,6 +176,44 @@ async def test_collect_rows_maps_web_results_to_tavily_web_and_keeps_trace():
     assert rows[0]["source_overlap"]["overlap"] == 1.0  # golden_sources == ["tavily_web"]
     assert rows[0]["crag_action"] == "incorrect"
     assert rows[0]["tokens_used"] == 1234 and rows[0]["confidence"] == 0.4
+
+
+@pytest.mark.parametrize(
+    ("metadata", "flags", "error"),
+    [
+        (ResponseMetadata(grounding=GroundingResult(action="unavailable")), {}, "grounding"),
+        (ResponseMetadata(crag=CRAGEvaluation(action="ungraded")), {}, "CRAG"),
+        (ResponseMetadata(), {"search_mode": "hybrid", "enable_hyde": True}, "HyDE"),
+    ],
+)
+async def test_answers_built_on_a_failed_llm_step_are_errors(metadata, flags, error):
+    """2026-10-28: Cerebras 429s made q-038 run without HyDE and q-015 without grounding; those
+    rows were scored as if normal. Now they're errors, so a resumed run asks them again."""
+    golden = load_goldens()[0]
+
+    class FakeInvoker:
+        async def invoke(self, question, flags, intent):
+            return ChatResponse(answer="A pod [1]", metadata=metadata), []
+
+    rows, _, errors = await collect_rows([golden], flags, FakeInvoker())  # type: ignore[arg-type]
+    assert rows == [] and error in errors[0]["error"] and errors[0]["id"] == golden.id
+
+
+async def test_healthy_hyde_answer_and_blocked_question_are_recorded():
+    goldens = load_goldens()[:2]
+    flags = {"search_mode": "hybrid", "enable_hyde": True}
+    replies = [
+        ChatResponse(answer="A pod [1]", metadata=ResponseMetadata(hyde_hypotheses=["p"])),
+        # blocked at the door: no HyDE, no grounding, and that's fine
+        ChatResponse(answer="Blocked.", metadata=ResponseMetadata(security={"blocked": True})),
+    ]
+
+    class FakeInvoker:
+        async def invoke(self, question, flags, intent):
+            return replies.pop(0), []
+
+    rows, _, errors = await collect_rows(goldens, flags, FakeInvoker())  # type: ignore[arg-type]
+    assert errors == [] and len(rows) == 2
 
 
 async def test_collect_rows_reuses_done_rows_and_reports_each_new_one():

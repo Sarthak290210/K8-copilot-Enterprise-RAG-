@@ -98,6 +98,27 @@ def save_checkpoint(path: Path, key: dict[str, Any], rows: list[dict[str, Any]])
     tmp.replace(path)  # atomic: a kill mid-write never leaves a broken checkpoint
 
 
+def degraded_reason(response: Any, flags: dict[str, Any]) -> str | None:
+    """Why an answer was built on a failed LLM step, or None.
+
+    HyDE, CRAG and the grounding check fail soft for users (HyDE searches the question alone,
+    CRAG keeps the chunks ungraded, an unchecked answer is kept). In an eval that row would
+    measure the outage, not the pipeline: on 2026-10-28 Cerebras' "high traffic" 429s made q-038
+    run without HyDE and q-015 without the grounding check. So it's an error, and is retried.
+    """
+    meta = response.metadata
+    if meta.security.get("blocked"):
+        return None
+    if meta.grounding is not None and meta.grounding.action == "unavailable":
+        return "grounding check unavailable (its LLM call failed)"
+    if meta.crag is not None and meta.crag.action == "ungraded":
+        return "CRAG grading failed (its LLM call failed)"
+    hyde_on = flags.get("enable_hyde") and flags.get("search_mode") != "sparse"
+    if hyde_on and meta.intent in (None, "rag") and not meta.hyde_hypotheses:
+        return "HyDE wrote no passages (its LLM call failed)"
+    return None
+
+
 async def collect_rows(
     goldens: list[Golden],
     flags: dict[str, Any],
@@ -128,6 +149,11 @@ async def collect_rows(
             # Recorded, never hidden: a crash on one question shouldn't stop the run.
             logger.exception("Question {} failed", golden.id)
             errors.append({"id": golden.id, "error": f"{type(exc).__name__}: {exc}"})
+            continue
+        degraded = degraded_reason(response, flags)
+        if degraded:
+            logger.warning("Question {} not recorded: {}", golden.id, degraded)
+            errors.append({"id": golden.id, "error": f"Degraded: {degraded}"})
             continue
         blocked = response.metadata.security.get("blocked")
         grounding = response.metadata.grounding

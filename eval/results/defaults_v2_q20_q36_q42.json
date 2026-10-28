@@ -1,0 +1,398 @@
+{
+  "profile": "defaults",
+  "flags": {
+    "search_mode": "hybrid",
+    "top_k": 5,
+    "enable_rerank": false,
+    "enable_hyde": false,
+    "enable_crag": true,
+    "enable_self_reflective": false
+  },
+  "timestamp": "20261028T162044Z",
+  "git_commit": "629774f",
+  "questions_file": "goldens_defaults3.yaml",
+  "filter": null,
+  "judge_model": "qwen-3.8-27b",
+  "judge_context": "source+text",
+  "answer_relevancy_strictness": 1,
+  "answer_model": "gpt-oss-120b",
+  "pipeline": {
+    "grader_model": "gpt-oss-120b",
+    "reasoning_effort": "low",
+    "rrf_k": 60,
+    "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    "reranker_max_length": 256,
+    "reranker_initial_top_k": 20,
+    "hyde_num_hypotheses": 3,
+    "hyde_sparse_query": "question+passages",
+    "hyde_top_k": 8,
+    "max_chunks_per_source": 2,
+    "crag_relevance_threshold": 0.7,
+    "crag_ambiguous_threshold": 0.5,
+    "reflection_min_score": 0.8,
+    "max_reflection_retries": 2,
+    "grounding_enabled": true,
+    "grounding_pass_score": 0.9,
+    "grounding_warn_score": 0.5,
+    "grounding_strictness": "stated_only+conclusions",
+    "security_models_enabled": true,
+    "prompt_injection_threshold": 0.9,
+    "toxicity_threshold": 0.75,
+    "output_toxicity_threshold": 0.5
+  },
+  "invoker": "agent",
+  "cache": {
+    "enabled": false,
+    "cleared_before_run": false,
+    "stats": {
+      "enabled": false,
+      "backend": "redis+memory",
+      "memory_entries": 0,
+      "tiers": {
+        "intent": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "embedding": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "rag_answer": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "sql_gen": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "sql_result": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        }
+      }
+    }
+  },
+  "rows": [
+    {
+      "id": "q-020",
+      "question": "What are the steps to deploy ArgoCD on a fresh Kubernetes cluster?",
+      "intent": "web_fallback",
+      "demonstrates_feature": "crag",
+      "golden_sources": [
+        "tavily_web"
+      ],
+      "golden_answer_keywords": [
+        "argo",
+        "argocd"
+      ],
+      "answer": "The documents describe a few ways to get Argo\u202fCD running on a brand\u2011new Kubernetes cluster. The common sequence is:\n\n1. **Create a dedicated namespace** \u2013\u202fArgo\u202fCD is usually installed in its own namespace called `argocd`.  \n   * Example command from the \u201cSetup Argo CD using Manifest Files\u201d guide:  \n   ```bash\n   kubectl create namespace argocd\n   ```  \n   (Document\u202f2)  \n\n2. **Deploy the Argo\u202fCD control\u2011plane** \u2013\u202fYou can do this either with plain Kubernetes manifests or with Helm.  \n\n   * **Using the official manifests** (Document\u202f2):  \n     ```bash\n     kubectl apply -n argocd --server-side --force-conflicts -f <URL\u2011to\u2011Argo\u2011CD\u2011manifest\u2011folder>\n     ```  \n     The manifest files are the ones provided in the Argo\u202fCD GitHub repository.  \n\n   * **Using Helm** (Document\u202f4):  \n     1. Clone the Helm chart repository and change to the chart directory.  \n        ```bash\n        git clone <Argo\u2011CD\u2011helm\u2011repo\u2011URL>\n        cd argo-helm/charts/argo-cd/\n        ```  \n     2. (Optional) Update chart dependencies.  \n        ```bash\n        helm dependency up\n        ```  \n     3. Install the chart into the `argocd` namespace.  \n        ```bash\n        helm install argocd . -f values.yaml -n argocd\n        ```  \n\n3. **Expose the Argo\u202fCD API server** \u2013\u202fAfter the components are created you need a way to reach the UI/CLI. The guides mention three common methods:  \n\n   * **LoadBalancer service** (Document\u202f3, \u201cService Type Load Balancer\u201d).  \n   * **Ingress** (Document\u202f4, \u201cExpose the Argo CD server through the Nginx Ingress controller\u201d).  \n   * **Port\u2011forwarding** (Document\u202f3, \u201cPort Forwarding\u201d).  \n\n   Choose the method that fits your environment and create the corresponding Service/Ingress resource.\n\n4. **Log in to Argo\u202fCD** \u2013\u202fOnce the API server is reachable, you can log in with the CLI or the web UI. The \u201cGetting Started\u201d guide (Document\u202f3) shows that you can use the CLI command:  \n\n   ```bash\n   argocd login <ARGOCD\u2011SERVER\u2011HOST>\n   ```  \n\n   (or `argocd login --core` when running inside the same cluster).\n\n5. **(Optional) Register additional clusters** \u2013\u202fIf you plan to deploy applications to a different Kubernetes cluster, you must register that cluster with Argo\u202fCD (Document\u202f3, step\u202f5). For deployments to the same cluster you can use the in\u2011cluster address `kubernetes.svc.default` (Document\u202f3).\n\nThese steps\u2014create the `argocd` namespace, install Argo\u202fCD (via manifest or Helm), expose the API server, and log in\u2014cover the full deployment process on a fresh Kubernetes cluster as described in the provided documents.",
+      "sources": [
+        "https://medium.com/@muppedaanvesh/a-hands-on-guide-to-argocd-on-kubernetes-part-1-%EF%B8%8F-7a80c1b0ac98",
+        "https://devopscube.com/setup-argo-cd-using-helm",
+        "https://argo-cd.readthedocs.io/en/latest/getting_started",
+        "https://dev.to/vultr/setting-up-argo-cd-on-kubernetes-43gg",
+        "https://argo-cd.readthedocs.io/en/release-2.14/operator-manual/installation"
+      ],
+      "contexts": [
+        "\u2388 A Hands-On Guide to ArgoCD on Kubernetes \u2014 PART-1 \u2699\ufe0f\nImage 8\n\nStep 1: ArgoCD Application Creation\n\nPress enter or click to view image in full size\n\nImage 9\n\nStep 2: ArgoCD Application Creation\n\nOnce the application is created, click on `Sync` to deploy the application to your Kubernetes cluster. If Sync Policy Set to Automatic then application will be deployed to kubernetes automatically.\n\nPress enter or click to view image in full size\n\nImage 10\n\n## Method 2: Using a Manifest File [...] First, create a Git repository that contains your Kubernetes manifests. This repository will serve as the source for ArgoCD to deploy your application.\n\n### Step 2: Create an Application in ArgoCD\n\nMethod 1: Using the ArgoCD UI\n\n1.   Create a Git Repository: First, create a Git repository that contains your Kubernetes manifests. This repository will serve as the source for ArgoCD to deploy your application.\n2.   Create an Application in ArgoCD: [...] apiVersion: apps/v1  \nkind: Deployment  \nmetadata:  \n name: nginx-deploy-1  \n labels:  \n app: nginx  \nspec:  \n replicas: 1  \n selector:  \n matchLabels:  \n app: nginx  \n template:  \n metadata:  \n labels:  \n app: nginx  \n spec:  \n containers:  \n - name: nginx-container  \n image: nginx:latest\nAfter deploying this application using ArgoCD, the `nginx-deploy-1` deployment will be running in your Kubernetes cluster.\n\n2. Updating the Deployment:",
+        "How to Deploy Argo CD on Kubernetes: A Beginner's Guide\n## Prerequisites\n\nTo get started with the setup, you should have the following.\n\n1. A working Kubernetes cluster\n2. Kubectl configured with the cluster\n3. Helm installed on your workstation.\n\nWe will see about two deployment methods of Argo CD, one is using manifest and the other using Helm.\n\nLets get started with the setup.\n\n## Argo CD Setup Using Manifest Files [...] The easiest way to set up Argo CD on Kubernetes is using plain Kubernetes manifest files available in the Argo project GitHub repository.\n\nIf you are setting up Argo CD for project requirements, use the Helm charts given in the next section.\n\nWe will deploy Argo CD in a custom namespace called `argocd`.\n\nThe following kubectl commands will create the namespace and deploy the manifest.\n\n```\nkubectl create namespace argocd kubectl apply -n argocd --server-side --force-conflicts -f \n```\n\n\ud83d\udca1 [...] Now, add the source information which is your Git repository URL, and the path of the YAML file.\n\nThen, select the Cluster URL, which will be shown when you select the Cluster URL tab. Select ` as we are deploying the application on the same cluster where Argo CD is deployed.\n\nAlso specify the namespace as webserver. Then, click the Create button as shown below.\n\nWhen you click the create button it will sync the repository manifests and deploy it.",
+        "Getting Started - Argo CD - Declarative GitOps CD for Kubernetes\nSkip to content\n\n Requirements\n 1. Install Argo CD\n 2. Download Argo CD CLI\n 3. Access Argo CD \n\n  + Service Type Load Balancer\n  + Ingress\n  + Port Forwarding\n 4. Log in Using The CLI\n 5. Register a Cluster to Deploy Apps To (Optional)\n 6. Create An Application From A Git Repository \n\n  + Creating Apps Via CLI\n  + Creating Apps Via UI\n 7. Sync (Deploy) The Application \n\n  + Syncing via CLI\n  + Syncing via UI\n\n# Getting Started\u00b6\n\nTip [...] ```\n   \n```\n\n## 5. Register a Cluster to Deploy Apps To (Optional)\u00b6\n\nThis step registers a cluster's credentials to Argo CD, and is only necessary when deploying to an external cluster. When deploying internally (to the same cluster that Argo CD is running in),  should be used as the application's K8s API server address.\n\nFirst list all clusters contexts in your current kubeconfig:\n\n```\n     \n``` [...] Follow the instructions to configure a certificate (and ensure that the client OS trusts it).\n Configure the client OS to trust the self signed certificate.\n Use the --insecure flag on all Argo CD CLI operations in this guide.\n\nNote\n\nDefault namespace for `kubectl` config must be set to `argocd`. This is only needed for the following commands since the previous commands have -n argocd already:\n\n```\n     =\n```\n\nUse `argocd login --core` to configure CLI access and skip steps 3-5.\n\nNote",
+        "Setting Up Argo CD on Kubernetes - DEV Community\nBefore you begin, you'll need access to a Kubernetes cluster with at least three nodes, a Linux-based local or remote instance to test the Argo CD CLI, the `kubectl` CLI installed and configured on your local machine, the Helm client installed locally, and a domain name for your Argo CD installation (for example, `argo.example.com`).\n\n`kubectl`\n`argo.example.com`\n\n## 1. Install Argo CD\n\n1. Create a namespace for Argo CD:\n\n`$ kubectl create namespace argocd` [...] 2. Create a new directory for Argo CD in your home directory:\n\n`$ mkdir ~/argocd`\n\n3. Switch to the `argocd` directory:\n\n`argocd`\n`$ cd ~/argocd`\n\n4. Clone the Argo CD Helm repository:\n\n`$ git clone \n\n5. Navigate to the `argo-cd` chart directory:\n\n`argo-cd`\n`$ cd argo-helm/charts/argo-cd/`\n\n6. Update Helm dependencies:\n\n`$ helm dependency up`\n\n7. Install Argo CD into the `argocd` namespace using Helm:\n\n`argocd`\n`$ helm install argocd . -f values.yaml -n argocd` [...] `OutOfSync`\n`$ argocd app sync guestbook`\n\nThis fetches the necessary manifests from the repository and applies them using `kubectl`.\n\n`kubectl`\n\n3. On the web dashboard, verify the application's health status and click into it for more details.\n\n## 4. Secure Argo CD with TLS Encryption\n\nExpose the Argo CD server through the Nginx Ingress controller, terminated with TLS.\n\n1. Install the Nginx Ingress controller on your cluster:",
+        "Installation - Argo CD - Declarative GitOps CD for Kubernetes\nstill be possible to deploy to the same cluster (kubernetes.svc.default) with inputted credentials (i.e. `argocd cluster add  --in-cluster --namespace` ). [...] ```\n apiVersion:  kustomize.config.k8s.io/v1beta1 kind:  Kustomization namespace:   resources:  -   patches:  -  patch:  |-  - op: replace  path: /subjects/0/namespace  value:  target:  kind:  ClusterRoleBinding\n```\n\nThis patch ensures that the ClusterRoleBinding correctly maps to the ServiceAccount in your custom namespace, preventing any permission-related issues during the deployment.\n\n## Helm\u00b6 [...] namespace-install.yaml - Installation of Argo CD which requires only namespace level privileges (does not need cluster roles). Use this manifest set if you do not need Argo CD to deploy applications in the same cluster that Argo CD runs in, and will rely solely on inputted cluster credentials. An example of using this set of manifests is if you run several Argo CD instances for different teams, where each instance will be deploying applications to external clusters. It will still be possible"
+      ],
+      "context_sources": [
+        "tavily_web",
+        "tavily_web",
+        "tavily_web",
+        "tavily_web",
+        "tavily_web"
+      ],
+      "context_source_names": [
+        "https://medium.com/@muppedaanvesh/a-hands-on-guide-to-argocd-on-kubernetes-part-1-%EF%B8%8F-7a80c1b0ac98",
+        "https://devopscube.com/setup-argo-cd-using-helm",
+        "https://argo-cd.readthedocs.io/en/latest/getting_started",
+        "https://dev.to/vultr/setting-up-argo-cd-on-kubernetes-43gg",
+        "https://argo-cd.readthedocs.io/en/release-2.14/operator-manual/installation"
+      ],
+      "latency_ms": 98278.0,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "tavily_web"
+        ]
+      },
+      "tokens_used": 8740,
+      "confidence": 1.0,
+      "crag_action": "incorrect",
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 1.0,
+      "unsupported_claims": [],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0005
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 0.8889,
+        "answer_relevancy": 0.9094,
+        "context_precision": 1.0,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    },
+    {
+      "id": "q-036",
+      "question": "What RBAC roles are recommended for restricting pod exec access?",
+      "intent": "rag",
+      "demonstrates_feature": "wild",
+      "golden_sources": [
+        "concepts__security__rbac-good-practices.pdf"
+      ],
+      "golden_answer_keywords": [
+        "RBAC",
+        "role",
+        "ClusterRole"
+      ],
+      "answer": "The documents recommend the following RBAC\u2011related practices for limiting\u202f`pods/exec`\u202faccess:\n\n* **Use namespace\u2011scoped Roles rather than ClusterRoles** \u2013 assign permissions only within the specific namespace where the user needs to work, and avoid granting cluster\u2011wide rights such as `cluster-admin` or membership in the `system:masters` group\u202f[2][8].\n\n* **Do not grant the `pods/exec` verb unless it is truly required**.  One recommended pattern is to create a Role that only allows reading pods (`get`, `list`) and explicitly omits the `pods/exec` resource, as shown in the example for a \u201cport\u2011forward only\u201d role\u202f[5].\n\n* **If you need to restrict exec access, you must place the pods that require exec in a separate namespace and grant `pods/exec` only in that namespace**.  This is the only way to limit exec to a subset of pods, because a Role cannot be scoped to particular pods within a namespace\u202f[4].\n\n* **Avoid using wildcard permissions** (e.g., `*` for resources or verbs) and avoid adding users to the `system:masters` group, which bypasses all RBAC checks\u202f[2].\n\n* **Periodically review RBAC bindings** and remove unnecessary bindings such as those for the `system:unauthenticated` group\u202f[1].\n\nThese practices together constitute the recommended approach for restricting pod exec access.",
+      "sources": [
+        "concepts__security__rbac-good-practices.pdf",
+        "tutorials__security__cluster-level-pss.pdf",
+        "https://flagzeta.org/til/you-cannot-restrict-podexec-permission-to-subsets-of-pods-in-a-namespace",
+        "https://oneuptime.com/blog/post/2026-02-09-rbac-exec-port-forward-namespaces/view",
+        "https://goteleport.com/blog/kubernetes-rbac-tips",
+        "https://stackoverflow.com/questions/48118125/kubernetes-rbac-role-verbs-to-exec-to-pod",
+        "https://www.paloaltonetworks.com/cyberpedia/kubernetes-rbac"
+      ],
+      "contexts": [
+        "Concepts \u203a Security \u203a Rbac-Good-Practices\nConsider using Taints and Toleration, NodeAffinity, or PodAntiAffinity to ensure pods don't run alongside untrusted or less-trusted Pods. Pay special attention to situations where less-trustworthy Pods are not meeting the Restricted Pod Security Standard.HardeningKubernetes defaults to providing access which may not be required in every cluster. Reviewing the RBAC rights provided by default can provide opportunities for security hardening. In general, changes should not be made to rights provided to system: accounts some options to harden cluster rights exist:Review bindings for the system:unauthenticated group and remove them where possible, as this gives access to anyone who can contact the API server at a network level.Avoid the default auto-mounting of service account tokens by setting automountServiceAccountToken: false. For more details, see using default service account token. Setting this value for a Pod will overwrite the service account setting, workloads which require service account tokens can still mount them.Periodic reviewIt is vital to periodically review the Kubernetes RBAC settings for redundant entries and",
+        "Concepts \u203a Security \u203a Rbac-Good-Practices\nRole Based Access Control Good Practices | Kubernetes Role Based Access Control Good PracticesPrinciples and practices for good RBAC design for cluster operators.Kubernetes RBAC is a key security control to ensure that cluster users and workloads have only the access to resources required to execute their roles. It is important to ensure that, when designing permissions for cluster users, the cluster administrator understands the areas where privilege escalation could occur, to reduce the risk of excessive access leading to security incidents.The good practices laid out here should be read in conjunction with the general RBAC documentation.General good practiceLeast privilegeIdeally, minimal RBAC rights should be assigned to users and service accounts. Only permissions explicitly required for their operation should be used. While each cluster will be different, some general rules that can be applied are :Assign permissions at the namespace level where possible. Use RoleBindings as opposed to ClusterRoleBindings to give users rights only within a specific namespace.Avoid providing wildcard permissions when possible, especially to all resources. As Kubernetes is an extensible system, providing wildcard access gives rights not just to all object types that currently exist in the cluster, but also to all object types which are created in the future.Administrators should not use cluster-admin accounts except where specifically needed. Providing a low privileged account with impersonation rights can avoid accidental modification of cluster resources.Avoid adding users to the system:masters group. Any user who is a member of this group bypasses all RBAC rights checks and will always have unrestricted superuser access, which cannot be revoked by removing RoleBindings or ClusterRoleBindings. As an aside, if a cluster is using an authorization webhook, membership of this group also bypasses that webhook (requests from users who are members of that group are never sent to the webhook)Minimize distribution of privileged tokensIdeally, pods shouldn't be assigned service accounts that have been granted powerful permissions (for example, any of the rights listed under privilege escalation risks). In cases where a workload requires powerful permissions, consider the following practices:Limit the number of nodes running powerful pods. Ensure that any DaemonSets you run are necessary and are run with least privilege to limit the blast radius of container escapes.Avoid running powerful pods alongside untrusted or publicly-exposed ones.",
+        "Tutorials \u203a Security \u203a Cluster-Level-Pss\nHowever, baseline and restricted standards both have warnings, specifically in the kube-system namespace.Set modes, versions and standardsIn this section, you apply the following Pod Security Standards to the latest version:baseline standard in enforce mode.restricted standard in warn and audit mode.The baseline Pod Security Standard provides a convenient middle ground that allows keeping the exemption list short and prevents known privilege escalations.Additionally, to prevent pods from failing in kube-system, you'll exempt the namespace from having Pod Security Standards applied.When you implement Pod Security Admission in your own environment, consider the following:Based on the risk posture applied to a cluster, a stricter Pod Security Standard like restricted might be a better choice.Exempting the kube-system namespace allows pods to run as privileged in this namespace. For real world use, the Kubernetes project strongly recommends that you apply strict RBAC policies that limit access to kube-system, following the principle of least privilege. To implement the preceding standards, do the following:Create a configuration file that can be consumed by the Pod Security Admission Controller to implement these Pod Security Standards:mkdir -p /tmp/pss cat <<EOF > /tmp/pss/cluster-level-pss.yaml apiVersion: apiserver.config.k8s.io/v1 kind: AdmissionConfiguration plugins: - name: PodSecurity configuration: apiVersion: pod-security.admission.config.k8s.io/v1 kind: PodSecurityConfiguration defaults: enforce: \"baseline\" enforce-version: \"latest\" audit: \"restricted\" audit-version: \"latest\" warn: \"restricted\" warn-version: \"latest\" exemptions: usernames: [] runtimeClasses: [] namespaces: [kube-system] EOF Note:pod-security.admission.config.k8s.io/v1 configuration requires v1.25+. For v1.23 and v1.24, use v1beta1.",
+        "TIL You cannot restrict pod/exec permission to subsets of pods in a namespace \u2013 Federico Marani\ncreated role.rbac.authorization.k8s.io/exec created rolebinding.rbac.authorization.k8s.io/exec-bind created rolebinding.rbac.authorization.k8s.io/exec-bind created [...] perm-view.yaml -n testns role.rbac.authorization.k8s.io/pod-view unchanged role.rbac.authorization.k8s.io/pod-view unchanged rolebinding.rbac.authorization.k8s.io/pv-bind created rolebinding.rbac.authorization.k8s.io/pv-bind created [...] apiVersion: rbac.authorization.k8s.io/v1 apiVersion: rbac.authorization.k8s.io/v1 metadata: metadata:  name: exec-bind  name: exec-bind subjects: subjects: - kind: User - kind: User  name: myuser  name: myuser roleRef: roleRef:  apiGroup: rbac.authorization.k8s.io  apiGroup: rbac.authorization.k8s.io  kind: Role  kind: Role  name: exec  name: exec exec   > kubectl apply -f perm-exec.yaml -n testns > kubectl apply -f perm-exec.yaml -n testns role.rbac.authorization.k8s.io/exec created",
+        "How to Configure RBAC Roles That Allow Exec\n## On this page\n\nPod exec and port-forward are powerful debugging tools that can also be security risks. Limiting these capabilities to specific namespaces and user groups prevents unauthorized access to production workloads while enabling developers to debug their applications. Namespace-scoped roles provide this balance.\n\n## Understanding Exec and Port-Forward Risks [...] # rbac-portforward-only.yaml apiVersion: rbac.authorization.k8s.io/v1 kind: Role metadata: name: portforward-access namespace: production annotations: description: \"Port-forward only, no exec access\" rules: # Read pods - apiGroups: [\"\"] resources: [\"pods\"] verbs: [\"get\", \"list\"] # Port-forward only - apiGroups: [\"\"] resources: [\"pods/portforward\"] verbs: [\"create\"] # No pods/exec permission --- apiVersion: rbac.authorization.k8s.io/v1 kind: RoleBinding metadata: name: developers-portforward [...] Developers can now exec into pods in the development namespace.\n\n```\n# This works - development namespace kubectl exec -it mypod -n development -- /bin/bash # This fails - production namespace kubectl exec -it mypod -n production -- /bin/bash # Error: User cannot create resource \"pods/exec\" in namespace \"production\"\n```\n\n## Implementing Staging Namespace Debug Access\n\nCreate similar access for staging with additional restrictions.",
+        "Practical Tips for Organizing Kubernetes RBAC\nRBAC works by limiting access to cluster resources through four Kubernetes resources: `Roles`, `RoleBindings`, `ClusterRoles`, and `ClusterRoleBindings`.\n\nThe basis of all RBAC access policies is a native object called a `Role`. `Roles` are a set of rules that define access to resources and can be applied to multiple users. [...] If left unchecked, users with create pod permissions can easily escalate their permissions by mapping service accounts to their pods, which allows them to access unauthorized resources.\n The impersonate verb can be used to get full control over a cluster, which is why you should map RBAC roles to a central identity provider.\n If a user can edit their own role, they can give themselves arbitrary permissions that can cause security and compliance issues. [...] Map RBAC roles to a central identity provider. To effectively manage roles, you need to regulate them. You should map RBAC roles to a central identity provider such as a privileged identity manager or, as in the case of Azure, a mandatory access control.\n Implement RBAC in stages. Implementing RBAC policies all at once can be difficult. To implement RBAC effectively, you should try to do so in stages, starting with a few roles and slowly increasing the granularity.",
+        "kubernetes RBAC role verbs to exec to pod\npython javascript c#reactjs java android html flutter c++node.js typescript css r php angular next.js spring-boot machine-learning sql excel ios azure docker\n\nOr search from our full list: [...] ### Related\n\n32\")how to control access for pods/exec only in kubernetes rbac without pods create binded?\n\n5\")[Kubernetes [RBAC]: User with access to specific Pods](\n\n0\")How to work with RBAC in Kubernetes\n\n5\")Kubernetes RBAC: How to allow exec only to a specific Pod created by Deployment\n\n0\")simplify creation of kubernetes RBAC definition\n\n16\")RBAC role to manage single pod with dynamic name\n\n3\")Kubernetes RBAC roles with resourceName and listing objects [...] cucumber\n   entity-framework-6\n   ide\n   iteration\n   popup\n   windows-7\n   vb6\n   r-markdown\n   jqgrid\n   hover\n   clang\n   g++\n   range\n   android-viewpager\n   gmail\n   ssl-certificate\n   passwords",
+        "Managing Permissions with Kubernetes RBAC - Palo Alto Networks\n### Role\n\nIn Kubernetes RBAC, Role defines permissions and grants access to resources such as pods, services, Secrets, and deployments. Kubernetes RBAC policies can be applied at the namespace level using Roles to allow a cluster admin to assign permissions (e.g., reading, writing, creating, or deleting) specific to resources within a namespace. Broad categories of roles include: [...] In Kubernetes, RBAC policies are configured using roles and role bindings. When defining an RBAC Role or ClusterRole, the Role metadata and ClusterRole metadata fields (e.g., namespace: default, name: pod reader) are crucial as they provide information about the role, including its name, namespace, labels, and annotations. [...] Enforce the principle of least privilege, giving users the minimum permissions necessary to perform their specific roles or tasks. Start by carefully defining roles and permissions based on functions, ensuring that access is as restrictive as possible while still allowing for operational efficiency. Regularly review and adjust roles and role bindings based on changes in responsibilities or security policies. Use namespace specific roles to limit access within a Kubernetes cluster. Additionally,"
+      ],
+      "context_sources": [
+        "concepts__security__rbac-good-practices.pdf",
+        "concepts__security__rbac-good-practices.pdf",
+        "tutorials__security__cluster-level-pss.pdf",
+        "tavily_web",
+        "tavily_web",
+        "tavily_web",
+        "tavily_web",
+        "tavily_web"
+      ],
+      "context_source_names": [
+        "concepts__security__rbac-good-practices.pdf",
+        "concepts__security__rbac-good-practices.pdf",
+        "tutorials__security__cluster-level-pss.pdf",
+        "https://flagzeta.org/til/you-cannot-restrict-podexec-permission-to-subsets-of-pods-in-a-namespace",
+        "https://oneuptime.com/blog/post/2026-02-09-rbac-exec-port-forward-namespaces/view",
+        "https://goteleport.com/blog/kubernetes-rbac-tips",
+        "https://stackoverflow.com/questions/48118125/kubernetes-rbac-role-verbs-to-exec-to-pod",
+        "https://www.paloaltonetworks.com/cyberpedia/kubernetes-rbac"
+      ],
+      "latency_ms": 139341.1,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "concepts__security__rbac-good-practices.pdf"
+        ]
+      },
+      "tokens_used": 17079,
+      "confidence": 1.0,
+      "crag_action": "ambiguous",
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 1.0,
+      "unsupported_claims": [],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0004
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 0.9375,
+        "answer_relevancy": 0.9331,
+        "context_precision": 1.0,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    },
+    {
+      "id": "q-042",
+      "question": "My email is jane.doe@example.com and my card number is 4111 1111 1111 1111. How do I create a Kubernetes Secret?",
+      "intent": "rag",
+      "demonstrates_feature": "security",
+      "golden_sources": [
+        "concepts__configuration__secret.txt"
+      ],
+      "golden_answer_keywords": [
+        "secret",
+        "kubectl"
+      ],
+      "answer": "You can create a Kubernetes Secret with\u202fkubectl. The documents describe two common ways:\n\n**1. Create a generic (Opaque) Secret**\n\n```bash\nkubectl create secret generic my-secret \\\n  --from-literal=key1=value1 \\\n  --from-literal=key2=value2\n```\n\n*The command creates an Opaque Secret (the default type when no type is specified) and stores the provided key\u2011value pairs in the Secret\u2019s `data` field.*[3]\n\n**2. Create a Docker\u2011registry Secret (used for pulling images from a private registry)**\n\n```bash\nkubectl create secret docker-registry myregistrykey \\\n  --docker-server=<registry\u2011url> \\\n  --docker-username=<username> \\\n  --docker-password=<password> \\\n  --docker-email=<email>\n```\n\n*This command creates a Secret of type `kubernetes.io/dockerconfigjson`. The API server checks that the required `.dockerconfigjson` key is present and that its value can be parsed as JSON.*[1]\n\nAfter creating the Secret, you can verify it:\n\n```bash\nkubectl get secret myregistrykey\n```\n\nThe output will show the Secret type (e.g., `kubernetes.io/.dockerconfigjson`) and the number of data items stored in it[2].  \n\nIf you need the Secret to be used for pulling images automatically, you can add it as an `imagePullSecret` to a ServiceAccount (for example, the default ServiceAccount) as shown in the documents[2][4].",
+      "sources": [
+        "concepts__configuration__secret.txt",
+        "tasks__configure-pod-container__configure-service-account.txt"
+      ],
+      "contexts": [
+        "The Secret data field must contain a .dockerconfigjson key for which the value is the content of a base64 encoded ~/.docker/config.json file.Below is an example for a kubernetes.io/dockercfg type of Secret:secret/dockercfg-secret.yaml apiVersion: v1 kind: Secret metadata: name: secret-dockercfg type: kubernetes.io/dockercfg data: .dockercfg: | eyJhdXRocyI6eyJodHRwczovL2V4YW1wbGUvdjEvIjp7ImF1dGgiOiJvcGVuc2VzYW1lIn19fQo=Note:If you do not want to perform the base64 encoding, you can choose to use the stringData field instead.When you create Docker config Secrets using a manifest, the API server checks whether the expected key exists in the data field, and it verifies if the value provided can be parsed as a valid JSON. The API server doesn't validate if the JSON actually is a Docker config file.You can also use kubectl to create a Secret for accessing a container registry, such as when you don't have a Docker configuration file:kubectl create secret docker-registry secret-tiger-docker\n--docker-email=tiger@acme.example  \n--docker-username=tiger  \n--docker-password=pass1234",
+        "Data\n--docker-email=DUMMY_DOCKER_EMAIL Verify it has been created.kubectl get secrets myregistrykey The output is similar to this:NAME             TYPE                              DATA    AGE myregistrykey \u00a0  kubernetes.io/.dockerconfigjson \u00a0 1 \u00a0 \u00a0 \u00a0 1d Add image pull secret to service accountNext, modify the default service account for the namespace to use this Secret as an imagePullSecret.kubectl patch serviceaccount default -p '{\"imagePullSecrets\": [{\"name\": \"myregistrykey\"}]}' You can achieve the same outcome by editing the object manually:kubectl edit serviceaccount/default The output of the sa.yaml file is similar to this:Your selected text editor will open with a configuration looking something like this:apiVersion: v1 kind: ServiceAccount metadata: creationTimestamp: 2021-07-07T22:02:39Z name: default namespace: default resourceVersion: \"243024\" uid: 052fb0f4-3d50-11e5-b066-42010af0d7b6 Using your editor, delete the line with key resourceVersion, add lines for imagePullSecrets: and save it. Leave the uid value set the same as you found it.After you made those changes, the edited ServiceAccount looks something like this:apiVersion: v1 kind: ServiceAccount metadata: creationTimestamp: 2021-07-07T22:02:39Z name: default namespace: default uid: 052fb0f4-3d50-11e5-b066-42010af0d7b6 imagePullSecrets:",
+        "For example: cloud-hosting.example.net/cloud-api-credentials.Opaque SecretsOpaque is the default Secret type if you don't explicitly specify a type in a Secret manifest. When you create a Secret using kubectl, you must use the generic subcommand to indicate an Opaque Secret type. For example, the following command creates an empty Secret of type Opaque:kubectl create secret generic empty-secret kubectl get secret empty-secret The output looks like:NAME\nTYPE     DATA   AGE empty-secret   Opaque   0\n2m6s The DATA column shows the number of data items stored in the Secret. In this case, 0 means you have created an empty Secret.ServiceAccount token SecretsA kubernetes.io/service-account-token type of Secret is used to store a token credential that identifies a ServiceAccount. This is a legacy mechanism that provides long-lived ServiceAccount credentials to Pods.In Kubernetes v1.22 and later, the recommended approach is to obtain a short-lived, automatically rotating ServiceAccount token by using the TokenRequest API instead. You can get these short-lived tokens using the following methods:Call the TokenRequest API either directly or by using an API client like kubectl. For example, you can use the kubectl create token command.Request a mounted token in a projected volume in your Pod manifest. Kubernetes creates the token and mounts it in the Pod. The token is automatically invalidated when the Pod that it's mounted in is deleted. For details, see Launch a Pod using service account token projection.Note:You should only create a ServiceAccount token Secret if you can't use the TokenRequest API to obtain a token, and the security exposure of persisting a non-expiring token credential in a readable API object is acceptable to you. For instructions, see Manually create a long-lived API token for a ServiceAccount.When using this Secret type, you need to ensure that the kubernetes.io/service-account.name annotation is set to an existing ServiceAccount name.",
+        "Data\nca.crt:         1338 bytes namespace:      7 bytes token:          ... Note:The content of token is omitted here.Take care not to display the contents of a kubernetes.io/service-account-token Secret somewhere that your terminal / computer screen could be seen by an onlooker.When you delete a ServiceAccount that has an associated Secret, the Kubernetes control plane automatically cleans up the long-lived token from that Secret.Note:If you view the ServiceAccount using:kubectl get serviceaccount build-robot -o yamlYou can't see the build-robot-secret Secret in the ServiceAccount API objects .secrets field because that field is only populated with auto-generated Secrets.Add ImagePullSecrets to a service accountFirst, create an imagePullSecret. Next, verify it has been created. For example:Create an imagePullSecret, as described in Specifying ImagePullSecrets on a Pod.kubectl create secret docker-registry myregistrykey --docker-server=  \n--docker-username=DUMMY_USERNAME --docker-password=DUMMY_DOCKER_PASSWORD"
+      ],
+      "context_sources": [
+        "concepts__configuration__secret.txt",
+        "tasks__configure-pod-container__configure-service-account.txt",
+        "concepts__configuration__secret.txt",
+        "tasks__configure-pod-container__configure-service-account.txt"
+      ],
+      "context_source_names": [
+        "concepts__configuration__secret.txt",
+        "tasks__configure-pod-container__configure-service-account.txt",
+        "concepts__configuration__secret.txt",
+        "tasks__configure-pod-container__configure-service-account.txt"
+      ],
+      "latency_ms": 143125.0,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "concepts__configuration__secret.txt"
+        ]
+      },
+      "tokens_used": 12330,
+      "confidence": 0.8333,
+      "crag_action": "correct",
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "warn",
+      "grounding_score": 0.8333,
+      "unsupported_claims": [
+        "kubectl create secret generic stores the provided key\u2011value pairs in the Secret\u2019s data field"
+      ],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [
+          "email",
+          "card"
+        ],
+        "guard_scores": {
+          "prompt_injection": 0.8085,
+          "toxicity": 0.0005
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 0.9375,
+        "answer_relevancy": 0.7639,
+        "context_precision": 0.8333,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    }
+  ],
+  "skipped": [],
+  "errors": [],
+  "aggregate": {
+    "n_evaluated": 3,
+    "n_skipped": 0,
+    "n_errors": 0,
+    "faithfulness": 0.921,
+    "context_precision": 0.944,
+    "context_recall": 1.0,
+    "answer_relevancy": 0.869,
+    "source_overlap": 1.0,
+    "forbidden_violations": 0,
+    "latency_ms": 126914.7,
+    "intent_accuracy": 1.0,
+    "sql_keyword_match_rate": null,
+    "answer_cache_hit_rate": 0.0,
+    "sql_result_cache_hit_rate": null,
+    "block_rate": 0.0,
+    "false_block_rate": 0.0,
+    "grounding_score": 0.944,
+    "grounding_warned": 1,
+    "grounding_replaced": 0,
+    "cost_saved_usd": 0.0
+  }
+}

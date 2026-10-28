@@ -9,6 +9,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from eval.post_checks import declined_as_expected, should_decline
+
 COMPARED_KEYS = [
     "faithfulness",
     "context_precision",
@@ -26,7 +28,10 @@ def load_result(path: Path) -> dict[str, Any]:
 
 
 def row_passed(row: dict[str, Any]) -> bool:
-    """Pass = faithfulness >= 0.7 and at least one golden source cited (if it has any)."""
+    """Pass = faithfulness >= 0.7 and at least one golden source cited (if it has any); a
+    should-decline security golden passes when it was refused (`declined_as_expected`)."""
+    if should_decline(row):
+        return declined_as_expected(row)
     faith = row["metrics"].get("faithfulness")
     overlap = row["source_overlap"]["overlap"]
     return faith is not None and faith >= PASS_FAITHFULNESS and (overlap is None or overlap > 0)
