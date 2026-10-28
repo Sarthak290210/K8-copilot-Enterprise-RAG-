@@ -1,0 +1,219 @@
+{
+  "profile": "hybrid+hyde",
+  "flags": {
+    "search_mode": "hybrid",
+    "top_k": 5,
+    "enable_rerank": false,
+    "enable_hyde": true,
+    "enable_crag": false,
+    "enable_self_reflective": false
+  },
+  "timestamp": "20261028T142532Z",
+  "git_commit": "28575b7",
+  "questions_file": "goldens_q14.yaml",
+  "filter": null,
+  "judge_model": "qwen-3.8-27b",
+  "judge_context": "source+text",
+  "answer_relevancy_strictness": 1,
+  "answer_model": "gpt-oss-120b",
+  "pipeline": {
+    "grader_model": "gpt-oss-120b",
+    "reasoning_effort": "low",
+    "rrf_k": 60,
+    "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    "reranker_max_length": 256,
+    "reranker_initial_top_k": 20,
+    "hyde_num_hypotheses": 3,
+    "hyde_sparse_query": "question+passages",
+    "hyde_top_k": 8,
+    "max_chunks_per_source": 2,
+    "crag_relevance_threshold": 0.7,
+    "crag_ambiguous_threshold": 0.5,
+    "reflection_min_score": 0.8,
+    "max_reflection_retries": 2,
+    "grounding_enabled": true,
+    "grounding_pass_score": 0.9,
+    "grounding_warn_score": 0.5,
+    "grounding_strictness": "stated_only+conclusions",
+    "security_models_enabled": true,
+    "prompt_injection_threshold": 0.9,
+    "toxicity_threshold": 0.75,
+    "output_toxicity_threshold": 0.5
+  },
+  "invoker": "agent",
+  "cache": {
+    "enabled": false,
+    "cleared_before_run": false,
+    "stats": {
+      "enabled": false,
+      "backend": "redis+memory",
+      "memory_entries": 0,
+      "tiers": {
+        "intent": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "embedding": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "rag_answer": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "sql_gen": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "sql_result": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        }
+      }
+    }
+  },
+  "rows": [
+    {
+      "id": "q-014",
+      "question": "How can I make sure a critical workload always has compute resources reserved?",
+      "intent": "rag",
+      "demonstrates_feature": "hyde",
+      "golden_sources": [
+        "concepts__scheduling-eviction__node-pressure-eviction.docx",
+        "concepts__scheduling-eviction__pod-priority-preemption.html"
+      ],
+      "golden_answer_keywords": [
+        "requests",
+        "limits",
+        "QoS"
+      ],
+      "answer": "You can use a **ResourceQuota that is scoped to a specific\u202fPriorityClass** to limit how many Pods of that priority can consume CPU and memory in a namespace.\n\n1. **Create a scoped quota** \u2013 In the examples the quota objects include a `scopeSelector` that matches the `PriorityClass` value (e.g., \u201chigh\u201d, \u201cmedium\u201d, \u201clow\u201d)\u202f[2].  \n   ```yaml\n   apiVersion: v1\n   kind: ResourceQuota\n   metadata:\n     name: pods-high\n   spec:\n     hard:\n       cpu: \"1k\"\n       memory: \"200Gi\"\n       pods: \"10\"\n     scopeSelector:\n       matchExpressions:\n       - operator: In\n         scopeName: PriorityClass\n         values: [\"high\"]\n   ```\n\n2. **Apply the quota** \u2013 Use `kubectl create -f \u2026` (or `kubectl apply -f \u2026`) to create the quota in the target namespace\u202f[2].\n\n3. **Create a Pod that uses the matching priority** \u2013 The pod manifest must set `priorityClassName: high` (as shown in the high\u2011priority pod example)\u202f[1].  \n   ```yaml\n   apiVersion: v1\n   kind: Pod\n   metadata:\n     name: high-priority\n   spec:\n     priorityClassName: high\n     containers:\n     - name: demo\n       image: ubuntu\n       command: [\"/bin/sh\"]\n       args: [\"-c\", \"while true; do echo hello; sleep 10;done\"]\n       resources:\n         requests:\n           cpu: \"500m\"\n           memory: \"10Gi\"\n         limits:\n           cpu: \"500m\"\n           memory: \"10Gi\"\n   ```\n\n4. **Verify the quota usage** \u2013 After the pod is created, `kubectl describe quota` shows the \u201cUsed\u201d values for the high\u2011priority quota have increased, while the other priority\u2011class quotas remain unchanged\u202f[1].\n\n**What the documents say about the effect of this configuration**\n\n* The scoped quota \u201cmay be desired\u201d to allow pods of a particular priority only if a matching quota object exists\u202f[1].  \n* Operators can restrict usage of certain high\u2011priority classes to a limited number of namespaces by using this mechanism\u202f[1].  \n* The admission\u2011control configuration (`--admission-control-config-file`) is required to enforce the restriction\u202f[1].\n\nThe documents do **not** state that the quota *reserves* compute resources ahead of time, nor that the API server will reject creation of additional high\u2011priority Pods *once the quota is fully used* to guarantee that an existing critical workload retains its resources. They only describe that the quota limits consumption of the specified priority class and that usage is tracked via the \u201cUsed\u201d fields.",
+      "sources": [
+        "concepts__policy__resource-quotas.txt",
+        "tasks__administer-cluster__manage-resources__quota-memory-cpu-namespace.txt",
+        "concepts__policy__limit-range.html",
+        "concepts__workloads__controllers__daemonset.html",
+        "concepts__workloads__pods.html",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx"
+      ],
+      "contexts": [
+        "- name: high-priority image: ubuntu command: [\"/bin/sh\"] args: [\"-c\", \"while true; do echo hello; sleep 10;done\"] resources: requests: memory: \"10Gi\" cpu: \"500m\" limits: memory: \"10Gi\" cpu: \"500m\" priorityClassName: high To create the Pod:kubectl create -f [https://k8s.io/examples/policy/high-priority-pod.yaml](https://k8s.io/examples/policy/high-priority-pod.yaml) Verify that \"Used\" stats for \"high\" priority quota, pods-high, has changed and that the other two quotas are unchanged.kubectl describe quota Name:       pods-high Namespace:  default Resource    Used  Hard\ncpu         500m  1k memory      10Gi  200Gi pods        1     10\nName:       pods-low Namespace:  default Resource    Used  Hard\ncpu         0     5 memory      0     10Gi pods        0     10\nName:       pods-medium Namespace:  default Resource    Used  Hard\ncpu         0     10 memory      0     20Gi pods        0     10 Limiting PriorityClass consumption by defaultIt may be desired that pods at a particular priority, such as \"cluster-services\", should be allowed in a namespace, if and only if, a matching quota object exists.With this mechanism, operators are able to restrict usage of certain high priority classes to a limited number of namespaces and not every namespace will be able to consume these priority classes by default.To enforce this, kube-apiserver flag --admission-control-config-file should be used to pass path to the following configuration file:apiVersion: apiserver.config.k8s.io/v1 kind: AdmissionConfiguration plugins:",
+        "apiVersion: v1 kind: ResourceQuota metadata: name: pods-medium spec: hard: cpu: \"10\" memory: \"20Gi\" pods: \"10\" scopeSelector: matchExpressions: - operator: In scopeName: PriorityClass values: [\"medium\"]\napiVersion: v1 kind: ResourceQuota metadata: name: pods-low spec: hard: cpu: \"5\" memory: \"10Gi\" pods: \"10\" scopeSelector: matchExpressions: - operator: In scopeName: PriorityClass values: [\"low\"] Apply the YAML using kubectl create.kubectl create -f\n[https://k8s.io/examples/policy/quota.yaml](https://k8s.io/examples/policy/quota.yaml)\nresourcequota/pods-high created resourcequota/pods-medium created resourcequota/pods-low created Verify that Used quota is 0 using kubectl describe quota.kubectl describe quota Name:       pods-high Namespace:  default Resource    Used  Hard\ncpu         0     1k memory      0     200Gi pods        0     10\nName:       pods-low Namespace:  default Resource    Used  Hard\ncpu         0     5 memory      0     10Gi pods        0     10\nName:       pods-medium Namespace:  default Resource    Used  Hard\ncpu         0     10 memory      0     20Gi pods        0     10 Create a pod with priority \"high\".policy/high-priority-pod.yaml apiVersion: v1 kind: Pod metadata: name: high-priority spec: containers:",
+        "Configure Memory and CPU Quotas for a Namespace | Kubernetes Configure Memory and CPU Quotas for a NamespaceDefine overall memory and CPU resource limits for a namespace.This page shows how to set quotas for the total amount memory and CPU that can be used by all Pods running in a namespace. You specify quotas in a ResourceQuota object.Before you beginYou need to have a Kubernetes cluster, and the kubectl command-line tool must be configured to communicate with your cluster. It is recommended to run this tutorial on a cluster with at least two nodes that are not acting as control plane hosts. If you do not already have a cluster, you can create one by using minikube or you can use one of these Kubernetes playgrounds:iximiuz LabsKillercodaKodeKloudYou must have access to create namespaces in your cluster.Each node in your cluster must have at least 1 GiB of memory.Create a namespaceCreate a namespace so that the resources you create in this exercise are isolated from the rest of your cluster.kubectl create namespace quota-mem-cpu-example Create a ResourceQuotaHere is a manifest for an example ResourceQuota:admin/resource/quota-mem-cpu.yaml apiVersion: v1 kind: ResourceQuota metadata: name: mem-cpu-demo spec: hard: requests.cpu: \"1\" requests.memory: 1Gi limits.cpu: \"2\" limits.memory: 2Gi Create the ResourceQuota:kubectl apply -f\n[https://k8s.io/examples/admin/resource/quota-mem-cpu.yaml](https://k8s.io/examples/admin/resource/quota-mem-cpu.yaml)",
+        "Concepts \u203a Policy \u203a Limit-Range\nthen that Pod will not be scheduled, failing with an error similar to:Pod \"example-conflict-with-limitrange-cpu\" is invalid: spec.containers[0].resources.requests: Invalid value: \"700m\": must be less than or equal to cpu limit  \nIf you set both request and limit, then that new Pod will be scheduled successfully  \neven with the same LimitRange in place:concepts/policy/limit-range/example-no-conflict-with-limitrange-cpu.yaml  \napiVersion: v1  \nkind: Pod  \nmetadata:  \nname: example-no-conflict-with-limitrange-cpu  \nspec:  \ncontainers:  \n- name: demo  \nimage: registry.k8s.io/pause:3.8  \nresources:  \nrequests:  \ncpu: 700m  \nlimits:  \ncpu: 700m  \nExample resource constraintsExamples of policies that could be created using LimitRange are:In a 2 node cluster with a capacity of 8 GiB RAM and 16 cores, constrain Pods in a  \nnamespace to request 100m of CPU with a max limit of 500m for CPU and request 200Mi  \nfor Memory with a max limit of 600Mi for Memory.Define default CPU limit and request to 150m and memory default request to 300Mi for  \nContainers started with no cpu and memory requests in their specs.In the case where the total limits of the namespace is less than the sum of the limits  \nof the Pods/Containers, there may be contention for resources. In this case, the  \nContainers or Pods will not be created.Neither contention nor changes to a LimitRange will affect already created resources.What's nextFor examples on using limits, see:how to configure minimum and maximum CPU constraints per namespace.how to configure minimum and maximum Memory constraints per namespace.how to configure default CPU Requests and Limits per namespace.how to configure default Memory Requests and Limits per namespace.how to configure minimum and maximum Storage consumption per namespace.a detailed example on configuring quota per namespace.Refer to the LimitRanger design document  \nfor context and historical information.FeedbackWas this page helpful?Yes  \nNoThanks for the feedback. If you have a specific, answerable question about how to use Kubernetes, ask it on  \nStack Overflow.  \nOpen an issue in the GitHub Repository if you want to  \nreport a problem",
+        "Concepts \u203a Workloads \u203a Controllers \u203a Daemonset\n# priorityClassName: important  \nterminationGracePeriodSeconds: 30  \nvolumes:  \n- name: varlog  \nhostPath:  \npath: /var/log  \nCreate a DaemonSet based on the YAML file:kubectl apply -f https://k8s.io/examples/controllers/daemonset.yaml  \nRequired FieldsAs with all other Kubernetes config, a DaemonSet needs apiVersion, kind, and metadata fields. For  \ngeneral information about working with config files, see  \nrunning stateless applications  \nand object management using kubectl.The name of a DaemonSet object must be a valid  \nDNS subdomain name.A DaemonSet also needs a  \n.spec  \nsection.Pod TemplateThe .spec.template is one of the required fields in .spec.The .spec.template is a pod template.  \nIt has exactly the same schema as a Pod,  \nexcept it is nested and does not have an apiVersion or kind.In addition to required fields for a Pod, a Pod template in a DaemonSet has to specify appropriate  \nlabels (see pod selector).A Pod Template in a DaemonSet must have a RestartPolicy  \nequal to Always, or be unspecified, which defaults to Always.Pod SelectorThe .spec.selector field is a pod selector. It works the same as the .spec.selector of  \na Job.You must specify a pod selector that matches the labels of the  \n.spec.template.  \nAlso, once a DaemonSet is created,  \nits .spec.selector can not be mutated. Mutating the pod selector can lead to the  \nunintentional orphaning of Pods, and it was found to be confusing to users.The .spec.selector is an object consisting of two fields:matchLabels - works the same as the .spec.selector of a  \nReplicationController.matchExpressions - allows to build more sophisticated selectors by specifying key,  \nlist of values and an operator that relates the key and values.When the two are specified the result is ANDed.The .spec.selector must match the .spec.template.metadata.labels.  \nConfig with these two not matching will be rejected by the API.Running Pods on select NodesIf you specify a .spec.template.spec.nodeSelector, then the DaemonSet controller will  \ncreate Pods on nodes which match that node selector.",
+        "Concepts \u203a Workloads \u203a Pods\nresource than the limit you set.CPU limits are enforced by CPU throttling. When a container approaches its  \nCPU limit, the kernel restricts its access to CPU. Memory limits are enforced  \nby the kernel with out-of-memory (OOM) kills when a container exceeds its limit.Note:Setting CPU limits involves a trade-off. CPU limits help prevent noisy neighbor  \nproblems where a single workload starves others on the same node. This is  \nespecially important in multi-tenant environments. However, CPU limits can cause  \nthrottling even when the node has spare CPU capacity, potentially degrading  \nlatency-sensitive workload performance. Whether to set CPU limits depends on  \nyour environment, workload characteristics, and isolation requirements.For details on resource units, enforcement behavior, and configuration examples,  \nsee Resource Management for Pods and Containers.Static PodsStatic Pods are managed directly by the kubelet daemon on a specific node,  \nwithout the API server  \nobserving them.  \nWhereas most Pods are managed by the control plane (for example, a  \nDeployment), for static  \nPods, the kubelet directly supervises each static Pod (and restarts it if it fails).Static Pods are always bound to one Kubelet on a specific node.  \nThe main use for static Pods is to run a self-hosted control plane: in other words,  \nusing the kubelet to supervise the individual control plane components.The kubelet automatically tries to create a mirror Pod  \non the Kubernetes API server for each static Pod.  \nThis means that the Pods running on a node are visible on the API server,  \nbut cannot be controlled from there. See the guide Create static Pods  \nfor more information.Note:The spec of a static Pod cannot refer to other API objects  \n(e.g., ServiceAccount,  \nConfigMap,  \nSecret, etc).Pods with multiple containersPods are designed to support multiple cooperating processes (as containers) that form  \na cohesive unit of service. The containers in a Pod are automatically co-located and  \nco-scheduled on the same physical or virtual machine in the cluster. The containers  \ncan share resources and dependencies, communicate with one another, and coordinate  \nwhen and how they are terminated.Pods in a Kubernetes cluster are used in two main ways:Pods that run a single container. The \"one-container-per-Pod\" model is the  \nmost common Kubernetes use case; in this case, you can think of a Pod as a",
+        "Reference \u203a Kubernetes-Api \u203a Workload-Resources \u203a Pod-V1\nIt supports specifying Requests and Limits for \"cpu\", \"memory\" and \"hugepages-\" resource names only. ResourceClaims are not supported.This field enables fine-grained control over resource allocation for the entire pod, allowing resource sharing among containers in a pod.This is an alpha field and requires enabling the PodLevelResources feature gate.ResourceRequirements describes the compute resource requirements.resources.claims ([]ResourceClaim)Map: unique values on key name will be kept during a mergeClaims lists the names of resources, defined in spec.resourceClaims, that are used by this container.This field depends on the DynamicResourceAllocation feature gate.This field is immutable. It can only be set for containers.ResourceClaim references one entry in PodSpec.ResourceClaims.resources.claims.name (string), requiredName must match the name of one entry in pod.spec.resourceClaims of the Pod where this field is used. It makes that resource available inside a container.resources.claims.request (string)Request is the name chosen for a request in the referenced claim. If empty, everything from the claim is made available, otherwise only the result of this request.resources.limits (map[string]Quantity)Limits describes the maximum amount of compute resources allowed. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/resources.requests (map[string]Quantity)Requests describes the minimum amount of compute resources required. If Requests is omitted for a container, it defaults to Limits if that is explicitly specified, otherwise to an implementation-defined value. Requests cannot exceed Limits. More info: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/resourceClaims ([]PodResourceClaim)Patch strategies: retainKeys, merge on key nameMap: unique values on key name will be kept during a mergeResourceClaims defines which ResourceClaims must be allocated and reserved before the Pod is allowed to start.",
+        "- name: quota-mem-cpu-demo-ctr image: nginx resources: limits: memory: \"800Mi\" cpu: \"800m\" requests: memory: \"600Mi\" cpu: \"400m\" Create the Pod:kubectl apply -f [https://k8s.io/examples/admin/resource/quota-mem-cpu-pod.yaml](https://k8s.io/examples/admin/resource/quota-mem-cpu-pod.yaml) --namespace=quota-mem-cpu-example Verify that the Pod is running and that its (only) container is healthy:kubectl get pod quota-mem-cpu-demo --namespace=quota-mem-cpu-example Once again, view detailed information about the ResourceQuota:kubectl get resourcequota mem-cpu-demo --namespace=quota-mem-cpu-example --output=yaml The output shows the quota along with how much of the quota has been used. You can see that the memory and CPU requests and limits for your Pod do not exceed the quota.status: hard: limits.cpu: \"2\" limits.memory: 2Gi requests.cpu: \"1\" requests.memory: 1Gi used: limits.cpu: 800m limits.memory: 800Mi requests.cpu: 400m requests.memory: 600Mi If you have the jq tool, you can also query (using JSONPath) for just the used values, and pretty-print that that of the output. For example:kubectl get resourcequota mem-cpu-demo --namespace=quota-mem-cpu-example -o jsonpath='{ .status.used }' | jq . apiVersion: v1 kind: Pod metadata: name: quota-mem-cpu-demo-2 spec: containers:"
+      ],
+      "context_sources": [
+        "concepts__policy__resource-quotas.txt",
+        "concepts__policy__resource-quotas.txt",
+        "tasks__administer-cluster__manage-resources__quota-memory-cpu-namespace.txt",
+        "concepts__policy__limit-range.html",
+        "concepts__workloads__controllers__daemonset.html",
+        "concepts__workloads__pods.html",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "tasks__administer-cluster__manage-resources__quota-memory-cpu-namespace.txt"
+      ],
+      "context_source_names": [
+        "concepts__policy__resource-quotas.txt",
+        "concepts__policy__resource-quotas.txt",
+        "tasks__administer-cluster__manage-resources__quota-memory-cpu-namespace.txt",
+        "concepts__policy__limit-range.html",
+        "concepts__workloads__controllers__daemonset.html",
+        "concepts__workloads__pods.html",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "tasks__administer-cluster__manage-resources__quota-memory-cpu-namespace.txt"
+      ],
+      "latency_ms": 141132.1,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 0.0,
+        "matched": []
+      },
+      "tokens_used": 21873,
+      "confidence": 0.9091,
+      "crag_action": null,
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [
+        "Create a ResourceQuota in the namespace of the critical workload and set the hard limits for cpu and memory to guarantee that the quota cannot be exceeded. Then bind a LimitRange to the namespace that defines default requests and limits for pods, ensuring every pod consumes the reserved resources. Use `kubectl apply -f <quota.yaml>` and `kubectl apply -f <limitrange.yaml>` to enforce the reservation.",
+        "Define a PriorityClass with a high value (e.g., 1000000) and annotate the critical workload's pod spec with `priorityClassName`. Combine this with a `PodDisruptionBudget` that sets `minAvailable: 1` to prevent eviction, and configure the pod's `resources.requests` to match the required compute. Apply the manifests with `kubectl apply -f <priorityclass.yaml>` and `kubectl apply -f <pdb.yaml>`.",
+        "Use a dedicated node pool or a node selector/taint\u2011toleration pair for the critical workload. Mark the nodes with a custom label (e.g., `critical=true`) and add a taint `critical=true:NoSchedule`. Then set `nodeSelector: {critical: \"true\"}` and appropriate `resources.requests` in the pod spec. Deploy the configuration using `kubectl apply -f <node.yaml>` and `kubectl apply -f <pod.yaml>`."
+      ],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 0.9091,
+      "unsupported_claims": [
+        "The example YAML shown (cpu: \"1k\", memory: \"200Gi\", pods: \"10\", scopeSelector values: [\"high\"]) is a valid scoped quota definition."
+      ],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0004
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.7113,
+        "context_precision": 0.0,
+        "context_recall": 0.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    }
+  ],
+  "skipped": [],
+  "errors": [],
+  "aggregate": {
+    "n_evaluated": 1,
+    "n_skipped": 0,
+    "n_errors": 0,
+    "faithfulness": 1.0,
+    "context_precision": 0.0,
+    "context_recall": 0.0,
+    "answer_relevancy": 0.711,
+    "source_overlap": 0.0,
+    "forbidden_violations": 0,
+    "latency_ms": 141132.1,
+    "intent_accuracy": 1.0,
+    "sql_keyword_match_rate": null,
+    "answer_cache_hit_rate": 0.0,
+    "sql_result_cache_hit_rate": null,
+    "block_rate": null,
+    "false_block_rate": 0.0,
+    "grounding_score": 0.909,
+    "grounding_warned": 0,
+    "grounding_replaced": 0,
+    "cost_saved_usd": 0.0
+  }
+}

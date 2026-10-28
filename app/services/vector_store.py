@@ -12,7 +12,7 @@ from qdrant_client import AsyncQdrantClient, models
 
 from app.config import settings
 from app.models import RetrievedChunk
-from app.services.sparse_vector_service import SparseVectorIndex, fuse_rrf
+from app.services.sparse_vector_service import SparseVectorIndex, cap_per_source, fuse_rrf
 
 UPSERT_BATCH_SIZE = 256
 SCROLL_PAGE_SIZE = 1_000
@@ -185,10 +185,21 @@ async def hybrid_search(
     top_k: int = 20,
     client: AsyncQdrantClient | None = None,
     dense_search: DenseRetriever | None = None,
+    sparse_query: Callable[[], str] | None = None,
+    max_per_source: int = 0,
 ) -> list[RetrievedChunk]:
-    """Dense and BM25 candidates (each `reranker_initial_top_k` deep, run concurrently), merged
-    with RRF. `dense_search` replaces the plain dense search (HyDE plugs in here); BM25 always
-    uses the question itself."""
+    """Dense and BM25 candidates (each `reranker_initial_top_k` deep), merged with RRF.
+
+    `dense_search` replaces the plain dense search (HyDE plugs in here). BM25 searches
+    `query_text`, or the text `sparse_query` returns once the dense search is done: HyDE's
+    passages are written then, and BM25 on the user's words alone ranked noise PDFs above
+    the docs HyDE found (free replay over E3's passages, 2026-10-28). Otherwise the two run
+    concurrently.
+
+    `max_per_source` > 0 picks the `top_k` from the fused `depth` list with at most that many
+    chunks per document, so one long document can't fill every slot (free replay 2026-10-28,
+    cap 2: hybrid top 5 recall 0.601 -> 0.636, HyDE top 8 0.869 -> 0.905, precision no lower).
+    """
     depth = max(top_k, settings.reranker_initial_top_k)
     if dense_search is not None:
         dense_candidates = dense_search(depth)
@@ -196,10 +207,17 @@ async def hybrid_search(
         dense_candidates = search(query_embedding, top_k=depth, client=client)
     else:
         raise ValueError("hybrid_search needs query_embedding or dense_search")
-    dense, sparse = await asyncio.gather(
-        dense_candidates, sparse_search(query_text, top_k=depth, client=client)
-    )
-    return fuse_rrf(dense, sparse, k=settings.rrf_k, top_k=top_k)
+    if sparse_query is None:
+        dense, sparse = await asyncio.gather(
+            dense_candidates, sparse_search(query_text, top_k=depth, client=client)
+        )
+    else:
+        dense = await dense_candidates  # BM25 itself is in memory: ms, nothing to overlap
+        sparse = await sparse_search(sparse_query(), top_k=depth, client=client)
+    if max_per_source <= 0:
+        return fuse_rrf(dense, sparse, k=settings.rrf_k, top_k=top_k)
+    fused = fuse_rrf(dense, sparse, k=settings.rrf_k, top_k=depth)
+    return cap_per_source(fused, max_per_source, top_k)
 
 
 async def list_sources(client: AsyncQdrantClient | None = None, limit: int = 10_000) -> list[str]:

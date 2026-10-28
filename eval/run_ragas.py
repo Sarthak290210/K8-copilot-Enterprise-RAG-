@@ -28,6 +28,8 @@ from app.services.web_search import is_web_chunk
 from eval.invokers import AgentInvoker, Invoker, ServiceInvoker, SkippedIntent
 from eval.post_checks import (
     ID_METRICS,
+    JUDGE_CONTEXT,
+    blocked_check,
     forbidden_keywords_check,
     id_context_scores,
     intent_match,
@@ -127,6 +129,8 @@ async def collect_rows(
             logger.exception("Question {} failed", golden.id)
             errors.append({"id": golden.id, "error": f"{type(exc).__name__}: {exc}"})
             continue
+        blocked = response.metadata.security.get("blocked")
+        grounding = response.metadata.grounding
         # Web results (CRAG) count as the golden source "tavily_web", whatever their URL.
         eval_sources = [WEB_SOURCE if is_web_chunk(c) else c.source for c in chunks]
         rows.append(
@@ -141,6 +145,8 @@ async def collect_rows(
                 "sources": list(response.sources),
                 "contexts": [chunk.text for chunk in chunks],
                 "context_sources": eval_sources,  # in rank order
+                # the real file name / URL of each chunk, for the judge (JUDGE_CONTEXT)
+                "context_source_names": [chunk.source for chunk in chunks],
                 "latency_ms": round((time.perf_counter() - start) * 1000, 1),
                 "forbidden": forbidden_keywords_check(response.answer, golden.forbidden_keywords),
                 "source_overlap": source_overlap(eval_sources, golden.golden_sources),
@@ -153,7 +159,10 @@ async def collect_rows(
                 "refined_question": response.metadata.refined_question,
                 # Phase 4: routing and Text2SQL
                 "predicted_intent": response.metadata.intent,
-                "intent_match": intent_match(golden.intent, response.metadata.intent),
+                # A blocked question never reached the router: no intent to compare.
+                "intent_match": None
+                if blocked
+                else intent_match(golden.intent, response.metadata.intent),
                 "generated_sql": response.metadata.generated_sql,
                 "sql_rows_count": response.metadata.sql_row_count,
                 "sql_keyword_match": sql_keyword_match(
@@ -165,6 +174,12 @@ async def collect_rows(
                 # Phase 5: which cache tiers answered, and the LLM spend they skipped.
                 "cache_hits": dict(response.metadata.cache_hits),
                 "cost_saved_usd": response.metadata.cost_saved_usd,
+                # Phase 6: input guard, grounding check (L10), output layers.
+                "blocked": blocked_check(blocked, golden.demonstrates_feature),
+                "grounding_action": grounding.action if grounding else None,
+                "grounding_score": grounding.score if grounding else None,
+                "unsupported_claims": grounding.unsupported_claims if grounding else [],
+                "security": dict(response.metadata.security),
             }
         )
         if on_row is not None:
@@ -214,12 +229,15 @@ async def _collect_and_close(
 
 
 def needs_scoring(row: dict[str, Any], judge_model: str) -> bool:
-    """Unscored, scored by another judge, or with a failed (None) LLM metric -> score (again).
-
-    The ID-based metrics are None by design for questions without golden sources: ignored.
+    """Unscored, scored by another judge or with another judge context (JUDGE_CONTEXT; rows
+    without one were judged on the bare text), or with a failed (None) LLM metric -> score
+    (again). The ID-based metrics are None by design for questions without golden sources:
+    ignored.
     """
     metrics = row.get("metrics")
     if not metrics or row.get("judge_model") != judge_model:
+        return True
+    if row.get("judge_context", "text") != JUDGE_CONTEXT:
         return True
     return any(value is None for key, value in metrics.items() if key not in ID_METRICS)
 
@@ -251,6 +269,7 @@ def score_rows(
             **id_context_scores(row.get("context_sources", []), row["golden_sources"]),
         }
         row["judge_model"] = judge_model
+        row["judge_context"] = JUDGE_CONTEXT
         logger.info("Scored {} ({}/{})", row["id"], n, len(todo))
         if on_scored is not None:
             on_scored()
@@ -367,6 +386,7 @@ def main() -> None:
         "questions_file": args.questions.name,
         "filter": args.feature,
         "judge_model": judge_model,
+        "judge_context": JUDGE_CONTEXT,  # older result files: chunk text only
         "answer_relevancy_strictness": settings.eval_relevancy_strictness,
         "answer_model": settings.llm_model_answer,
         "pipeline": pipeline_settings(),

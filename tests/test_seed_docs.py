@@ -9,7 +9,13 @@ def test_corpus_selection_is_reproducible():
     signal_b, noise_b = seed_db._select_corpus(10)
     assert noise_a == noise_b  # seeded: every run and every eval uses the same noise sample
     assert len(noise_a) == 10
-    assert signal_a == seed_db._collect_files("true_data")  # all signal docs, always
+    # all signal docs, always, plus the Phase 6 attack test docs
+    assert signal_a == seed_db._collect_files("true_data") + seed_db._collect_files("attack_data")
+
+
+def test_missing_folder_has_no_files(tmp_path, monkeypatch):
+    monkeypatch.setattr(seed_db, "DOCS_DIR", tmp_path)
+    assert seed_db._collect_files("attack_data") == []
 
 
 def test_all_and_oversized_samples_take_everything():

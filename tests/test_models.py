@@ -26,3 +26,21 @@ def test_chat_response_defaults():
     response = ChatResponse(answer="hi")
     assert response.sources == [] and response.confidence is None
     assert response.metadata.intent == "rag"
+
+
+# ---- Phase 6: L1 question validation ----
+
+
+@pytest.mark.parametrize(
+    "question",
+    ["   ", "\x00\x00DROP", "a" * 60, "pods " * 25, "bell\x07"],
+)
+def test_question_content_is_rejected(question):
+    with pytest.raises(ValidationError):
+        QueryRequest(question=question)
+
+
+def test_question_is_stripped_and_keeps_newlines():
+    assert QueryRequest(question="  What is a Pod?\n\tdetails ").question == (
+        "What is a Pod?\n\tdetails"
+    )

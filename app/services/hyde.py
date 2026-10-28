@@ -3,7 +3,8 @@
 A short, vague question ("how do I stop a tenant hogging CPU?") embeds poorly. So the LLM first
 writes a few short passages that *would* answer it, in the style of the docs; those passages
 are embedded and searched, and land near the real documentation. The original question is
-searched too, and all the lists are merged with RRF.
+searched too, and all the lists are merged with RRF. In hybrid search the BM25 half searches
+the question plus the passages (`sparse_query`), so keyword search gets the docs' terms too.
 """
 
 import asyncio
@@ -61,6 +62,16 @@ class HyDERetriever:
         return [h.strip()[:MAX_HYPOTHESIS_CHARS] for h in raw if isinstance(h, str) and h.strip()][
             : self.num_hypotheses
         ]
+
+    def sparse_query(self, question: str) -> str:
+        """BM25 text for hybrid search: the question joined with this request's passages.
+
+        The user's own words ("tenant", "shared computer") matched kernel/networking noise PDFs
+        and pushed out the docs HyDE had found; the passages carry the docs' terms
+        (ResourceQuota, LimitRange). Free replay over E3's passages (28 questions, ID-based):
+        precision 0.731 -> 0.808, recall 0.750 -> 0.804. Without passages: the question only.
+        """
+        return " ".join([question, *self.hypotheses])
 
     async def retrieve(self, question: str, top_k: int = 5) -> list[RetrievedChunk]:
         """Dense search with the question + each hypothesis, merged by RRF, best `top_k`.

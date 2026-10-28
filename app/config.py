@@ -96,16 +96,34 @@ class Settings(BaseSettings):
     reserved_output_tokens: int = 1000
 
     # === Security thresholds ===
-    prompt_injection_threshold: float = 0.75
+    prompt_injection_threshold: float = 0.9  # user's choice 2026-10-27: q-042 scored 0.809
     toxicity_threshold: float = 0.75
     output_toxicity_threshold: float = 0.5
     max_validation_retries: int = 2
+    # Phase 6: llm-guard models (injection + toxicity, ONNX; user's choice) for the input guard
+    # and output moderation; off only in tests.
+    security_models_enabled: bool = True
+    # A guard that fails to load or crashes blocks the request (true) or lets it through with
+    # a warning (false, dev only).
+    security_fail_closed: bool = True
+    # Grounding check (L10): every answer's claims checked against its chunks (user's choice).
+    grounding_enabled: bool = True
+    # >= pass; between warn and pass -> warning. 0.9 since 2026-10-28 (user's choice; was 0.8):
+    # one unsupported claim in six (q-014, 0.83) now triggers the one rewrite.
+    grounding_pass_score: float = 0.9
+    grounding_warn_score: float = 0.5  # < warn -> answer replaced by "couldn't verify"
 
     # === Retrieval defaults ===
     hyde_num_hypotheses: int = 3
     hyde_enabled_by_default: bool = False
+    # Chunks a HyDE request answers from (at least; a larger top_k flag wins). Free replay
+    # 2026-10-28 (user's choice): HyDE recall 0.80 at 5 -> 0.87 at 8, ~+1-2k tokens per answer.
+    hyde_top_k: int = 8
     hybrid_search_enabled: bool = True
     rrf_k: int = 60
+    # Hybrid search keeps at most this many chunks per document (0 = no cap); not applied to
+    # rerank candidates. Free replay 2026-10-28 (user's choice): recall +0.035, precision +0.008.
+    max_chunks_per_source: int = 2
     reranker_backend: Literal["local", "voyage"] = "local"
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     # Tokens of (question + chunk) the local cross-encoder reads. 256 (user's choice,
@@ -121,11 +139,6 @@ class Settings(BaseSettings):
     reflection_min_score: float = 0.8  # user's choice 2026-10-26 (was 0.85)
     max_reflection_retries: int = 2
     self_reflective_enabled_by_default: bool = False
-
-    # === Vanna ===
-    vanna_model: str = "openai/gpt-oss-120b"
-    vanna_temperature: float = 0.0
-    vanna_seed: int = 42
 
     # === Server ===
     api_host: str = "0.0.0.0"

@@ -24,6 +24,14 @@ from app.models import (
     RetrievedChunk,
     RetrievedChunkPreview,
 )
+from app.security.grounding_check import (
+    UNVERIFIED_ANSWER,
+    apply_grounding_policy,
+    ground_with_retry,
+    needs_check,
+    regeneration_feedback,
+)
+from app.security.output_validator import clean_answer
 from app.security.system_prompt import build_system_prompt
 from app.services import embedding_service, llm_service, vector_store
 from app.services.crag import crag_pipeline
@@ -44,6 +52,8 @@ CLARIFY_ANSWER = (
     "it's about (Pod, Deployment, Service, node...), what you're trying to do, and any error "
     "message or command output you see."
 )
+# Fixed replies written in code, never by the model: nothing to ground-check or cache.
+_FIXED_ANSWERS = (NOT_FOUND_ANSWER, OUT_OF_SCOPE_ANSWER, CLARIFY_ANSWER)
 
 
 def _default_flags() -> dict[str, Any]:
@@ -117,26 +127,36 @@ async def _retrieve(
     Without rerank/HyDE/CRAG, `top_k` chunks are fetched directly, so the `naive` flags run
     exactly the Phase 1 path that E1 measured. With rerank, `reranker_initial_top_k` (20)
     candidates are fetched and the cross-encoder keeps the best `top_k`. HyDE replaces the
-    dense part (BM25 always uses the question itself; HyDE is ignored for `sparse`).
+    dense part, and in hybrid mode BM25 searches the question plus HyDE's passages (HyDE is
+    ignored for `sparse`); a HyDE request answers from at least `hyde_top_k` (8) chunks.
+    Hybrid search keeps at most `max_chunks_per_source` (2) chunks per document, except for
+    rerank candidates (the reranker makes its own choice).
     """
     flags = validate_flags(flags)  # cheap; callers other than run_rag (Phase 4 graph) too
     trace = trace or _Trace()
     search_mode = _flag(flags, "search_mode")
     top_k = int(_flag(flags, "top_k"))
+    hyde = bool(_flag(flags, "enable_hyde")) and search_mode != "sparse"
+    if hyde:
+        top_k = max(top_k, settings.hyde_top_k)
     rerank = bool(_flag(flags, "enable_rerank"))
     fetch_k = max(top_k, settings.reranker_initial_top_k) if rerank else top_k
+    per_source = 0 if rerank else settings.max_chunks_per_source
 
     if search_mode == "sparse":
         chunks = await vector_store.sparse_search(question, top_k=fetch_k)
-    elif _flag(flags, "enable_hyde"):
+    elif hyde:
         retriever = HyDERetriever()
         if search_mode == "hybrid":
-            # HyDE is the dense half of hybrid_search: it runs alongside BM25 (same depth/RRF).
+            # HyDE is the dense half of hybrid_search (same depth/RRF); BM25 then searches the
+            # question plus the passages it wrote.
             chunks = await vector_store.hybrid_search(
                 question,
                 None,
                 top_k=fetch_k,
                 dense_search=lambda depth: retriever.retrieve(question, top_k=depth),
+                sparse_query=lambda: retriever.sparse_query(question),
+                max_per_source=per_source,
             )
         else:
             chunks = await retriever.retrieve(question, top_k=fetch_k)
@@ -145,7 +165,9 @@ async def _retrieve(
     else:
         query_vector = await embedding_service.embed_query(question)
         if search_mode == "hybrid":
-            chunks = await vector_store.hybrid_search(question, query_vector, top_k=fetch_k)
+            chunks = await vector_store.hybrid_search(
+                question, query_vector, top_k=fetch_k, max_per_source=per_source
+            )
         else:
             chunks = await vector_store.search(query_vector, top_k=fetch_k)
 
@@ -159,16 +181,26 @@ async def _retrieve(
 
 
 def _build_context(chunks: list[RetrievedChunk]) -> str:
-    """Numbered blocks the model cites as [n]. Replaced by spotlighting in Phase 6."""
+    """Spotlighted documents (L8) the model cites as [n]."""
     return format_passages(chunks, with_sources=True)
 
 
 async def _generate(
-    question: str, chunks: list[RetrievedChunk], flags: dict[str, Any] | None
+    question: str,
+    chunks: list[RetrievedChunk],
+    flags: dict[str, Any] | None,
+    feedback: str = "",
 ) -> dict[str, Any]:
-    user_message = f"Context:\n{_build_context(chunks)}\n\nQuestion: {question}"
-    result = await llm_service.generate(build_system_prompt(), user_message)
-    return {"answer": result["content"], "usage": result["usage"], "model": result["model"]}
+    """feedback: the grounding check's list of unsupported statements, for the one rewrite."""
+    user_message = f"Context:\n{_build_context(chunks)}\n\nQuestion: {question}{feedback}"
+    system_prompt = build_system_prompt(
+        reranked=bool(_flag(flags, "enable_rerank")),
+        # HyDE is ignored for sparse search (_retrieve), so the prompt mustn't mention it there
+        hyde=bool(_flag(flags, "enable_hyde")) and _flag(flags, "search_mode") != "sparse",
+    )
+    result = await llm_service.generate(system_prompt, user_message)
+    answer = clean_answer(result["content"])  # L9: plain [n] citations, no wrapping fence
+    return {"answer": answer, "usage": result["usage"], "model": result["model"]}
 
 
 def _no_context_answer(crag: CRAGEvaluation | None) -> str:
@@ -182,7 +214,19 @@ def _no_context_answer(crag: CRAGEvaluation | None) -> str:
 
 # Bump when a prompt or the pipeline changes in a way that changes answers: old cached answers
 # then stop matching (they expire within CACHE_TTL_RAG anyway).
-RAG_CACHE_VERSION = 2  # 2: the key gained pipeline_settings(); model-written declines skipped
+# 2: the key gained pipeline_settings(); model-written declines skipped.
+# 3: Phase 6 (spotlighted context, hardened prompt, grounding check).
+# 4: after E6: one grounded rewrite, no warning text in the answer, "name the document" rule.
+# 5: HyDE + hybrid: BM25 searches the question plus HyDE's passages.
+# 6: answer prompt: no assumptions / nothing from the model's own knowledge.
+# 7: answer prompt: web results count as documents (YAML examples from them allowed).
+# 8: the grounding check sees each document's source (it can rewrite / replace answers).
+# 9: answer prompt says how the documents were chosen when rerank / HyDE is on.
+# 10: strict grounding check (only stated claims count; more answers get the one rewrite).
+# 11: HyDE answer prompt: documents' terms, keep qualifiers, no goal-as-fact, say what's missing.
+# 12: hybrid search max 2 chunks per document; HyDE answers from 8 chunks.
+# 13: grounding check: summary sentences and strong words checked as claims; pass score 0.9.
+RAG_CACHE_VERSION = 13
 
 
 def pipeline_settings() -> dict[str, Any]:
@@ -199,10 +243,24 @@ def pipeline_settings() -> dict[str, Any]:
         "reranker_max_length": settings.reranker_max_length,
         "reranker_initial_top_k": settings.reranker_initial_top_k,
         "hyde_num_hypotheses": settings.hyde_num_hypotheses,
+        "hyde_sparse_query": "question+passages",  # BM25 text with HyDE on (2026-10-28)
+        "hyde_top_k": settings.hyde_top_k,
+        "max_chunks_per_source": settings.max_chunks_per_source,
         "crag_relevance_threshold": settings.crag_relevance_threshold,
         "crag_ambiguous_threshold": settings.crag_ambiguous_threshold,
         "reflection_min_score": settings.reflection_min_score,
         "max_reflection_retries": settings.max_reflection_retries,
+        # Phase 6: the grounding check can rewrite an answer; the guard thresholds decide what
+        # gets blocked (recorded in eval results; also part of the eval checkpoint key).
+        "grounding_enabled": settings.grounding_enabled,
+        "grounding_pass_score": settings.grounding_pass_score,
+        "grounding_warn_score": settings.grounding_warn_score,
+        # 2026-10-28: "stated or implied" -> "stated_only" -> + summaries / strong words
+        "grounding_strictness": "stated_only+conclusions",
+        "security_models_enabled": settings.security_models_enabled,
+        "prompt_injection_threshold": settings.prompt_injection_threshold,
+        "toxicity_threshold": settings.toxicity_threshold,
+        "output_toxicity_threshold": settings.output_toxicity_threshold,
     }
 
 
@@ -227,7 +285,7 @@ def _cacheable(answer: str, chunks: list[RetrievedChunk]) -> bool:
     """Only real answers: never one made without context (not found / off-topic / too vague)
     or one where the model said it doesn't know — cheap to redo, and the docs, the web or a
     retry may have it next time."""
-    if not chunks or answer in (NOT_FOUND_ANSWER, OUT_OF_SCOPE_ANSWER, CLARIFY_ANSWER):
+    if not chunks or answer in (*_FIXED_ANSWERS, UNVERIFIED_ANSWER):
         return False
     return _MODEL_DECLINE.search(answer) is None
 
@@ -332,8 +390,23 @@ async def _run_rag_with_trace(
             refined_question=best.refined_question,
         ),
     )
+    if needs_check(response.answer, best.chunks, _FIXED_ANSWERS):
+        # L10 (Phase 6): checked before caching, so a cached answer carries its grounding.
+        # Below the pass score the answer is rewritten once with the unsupported statements.
+        attempt = best
+
+        async def rewrite(unsupported: list[str]) -> tuple[str, int]:
+            question_asked = attempt.refined_question or question
+            generated = await _generate(
+                question_asked, attempt.chunks, flags, regeneration_feedback(unsupported)
+            )
+            return generated["answer"], generated["usage"]["total_tokens"]
+
+        response.answer, grounding = await ground_with_retry(response.answer, best.chunks, rewrite)
+        response.metadata.tokens_used += grounding.tokens_used
+        apply_grounding_policy(response, grounding)
     _stamp_cache(response, start)
-    if _cacheable(best.answer, best.chunks):
+    if _cacheable(response.answer, best.chunks):
         await query_cache.set_rag_answer(
             question,
             cache_context,

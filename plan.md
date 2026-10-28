@@ -3,7 +3,7 @@
 > **Who this is for:** Claude Code, building `k8-copilot` phase by phase with a beginner developer.
 > **How to read each phase:** Goal → Concept in plain words → `directory/` → `file.py` → every function and what it does → wiring → Done-when → **Eval checkpoint** (run eval, record results in `CLAUDE.md`).
 
-> **Progress (updated 2026-10-26):** Phases 0–5 ✅ done (E0–E5 recorded in `CLAUDE.md`; Phase 5 not committed yet); Phase 6 next, on the user's "go". Commits: `568b58a` (0–1), `cc13a43` (2), `1124d43` (3), `ac8258f` + `6fe3052` (4).
+> **Progress (updated 2026-10-28):** Phases 0–7 ✅ done (E0–E6 recorded in `CLAUDE.md`, Final Comparison written, `README.md`), plus post-Phase-7 improvements on 2026-10-28 (below); Phases 6–7 and the improvements not committed; the optional deploy was not done (user's choice). **Optional Phase 8 (adaptive RAG) is saved as an idea, not started.** Commits: `568b58a` (0–1), `cc13a43` (2), `1124d43` (3), `ac8258f` + `6fe3052` (4), `28575b7` (5).
 >
 > **Decisions that changed this plan (all the user's; details in `CLAUDE.md`):**
 > - **LLM:** Cerebras (`gpt-oss-120b` answers/grades, `qwen-3.8-27b` judges with thinking off); free $5 trial credit, so evals are budgeted.
@@ -17,6 +17,8 @@
 > - **E4–E6 use the `defaults` profile** (hybrid + CRAG) instead of `all`, to stay within the credit.
 > - **Phase 5 cache:** the embedding tier caches question (and HyDE) vectors only, not document chunks; each process keeps an in-memory copy in front of Redis (a warm answer in ~10 ms); files ingested before Phase 5 got their hashes recorded instead of being re-ingested.
 > - **E5:** the cold run's TTLs (`CACHE_TTL_RAG`, `CACHE_TTL_SQL_RESULT`) were raised to 3 h for that run; it was stopped for low memory and resumed, its first answers expired, so an answers-only refill pass ran before the warm run.
+> - **Phase 6:** llm-guard input guard with **ONNX** models (toxicity without llm-guard's 512-token padding: ~42 ms instead of ~660 ms); prompt-injection threshold **0.9** (q-042, a K8s question with an email + card number, scored 0.809); **regex** PII redaction on the answer **and the question** (before the agent; private IPs kept); **grounding check on every answer**; the indirect-injection doc lives in `seed/docs/attack_data/` (golden q-045); the LLM summary of very long inputs isn't built (L1 caps questions at 2,000 characters; user confirmed to keep it that way).
+> - **Post-Phase 7 (2026-10-28):** fix: Docling's over-long headings were dropping body text, 6 true_data PDFs re-indexed (7,286 → 7,307 chunks); the answer prompt forbids the model's own knowledge (CRAG web results count as documents, their YAML may be used); HyDE's BM25 searches the question + passages; hybrid search keeps at most 2 chunks per document and HyDE answers from 8 chunks (free replay: hybrid recall 0.601 → 0.636, HyDE 0.804 → 0.905); the grounding check and the eval judge see each chunk's source; Streamlit got demo questions per technique (its eval dashboard was removed, then re-added with run comparison). HyDE, rerank and Self-RAG stay off by default; Streamlit was used live on the host API, but the two Phase 1 UI checks below aren't confirmed yet (still unticked).
 > - **Phase 5 code review (7 of 10 fixed):** SQL cache key keeps quoted text exact; dedup also checks Qdrant; checkpoints per cache mode; answer key includes the pipeline settings; SQL key includes today's date + schema; `answer_cache_hit_rate` counts only whole cached answers (+ `sql_result_cache_hit_rate`); model-written "I don't know" isn't cached. Postponed: stale answers after `make seed` / in other workers' memory, the backfill check, S3 tests.
 
 ---
@@ -962,25 +964,68 @@ L1 Pydantic validation  → L4a JWT auth → L4b rate limit → L6 token budget 
 One test file per security module, plus `test_security_pipeline.py`: an injection → 400; over budget → 429; PII is redacted in the output; the grounding policy replaces an unsupported answer; a guard crash → blocked when `fail_closed=True`.
 
 ### ✅ Phase 6 — Done when
-- [ ] Every attack golden is blocked or safely answered (no forbidden keywords)
-- [ ] Legitimate questions are **not** blocked (false_block_rate ≈ 0)
-- [ ] The grounding check lowers confidence on a deliberately unsupported answer
-- [ ] The token budget uses actual usage
-- [ ] `make test` is green
+- [x] Every attack golden is blocked or safely answered (no forbidden keywords) _(E6: forbidden 0; q-041/q-043 blocked, q-017/q-018/q-044 declined, q-042/q-045 answered safely)_
+- [x] Legitimate questions are **not** blocked (false_block_rate ≈ 0) _(E6: 0.0)_
+- [x] The grounding check lowers confidence on a deliberately unsupported answer _(made-up StatefulSet answer: score 0.0 → replaced, confidence 0.95 → 0.0)_
+- [x] The token budget uses actual usage _(429 `budget_exceeded` at 24,071 actual tokens, counted across the SQL pending step)_
+- [x] `make test` is green _(409 tests)_
 
 ### 🧪 EVAL CHECKPOINT E6
 1. `uv run python -m eval.run_ragas --profile defaults --filter security` → record with `--phase 6 --note "security goldens"`.
 2. `make eval-defaults` (cache cleared) → record with `--phase 6 --note "full suite with security on"`.
 3. Observations: block rate, false-block rate, **faithfulness change** (the grounding check should hold or improve it), and the latency added by the security layers (target < 1.5 s overhead).
 
+**✅ E6 done (2026-10-27):** security subset forbidden 0, false blocks 0. Full run 1 broke the regression rule (faith −0.060 vs E5 cold: the appended grounding warning was scored as an unsupported claim, one answer replaced, q-008 said "document [1]"); after the fixes (one grounded rewrite below 0.8, warning only in metadata, name-the-document rule) the re-run gave **0.686 / 0.785 / 0.807 / 0.771**, faith −0.016 vs E5 cold on the same IDs, every grounding check `pass`. Cost +59% tokens; overhead ~0.1 s guard + ~1.5 s grounding (over the 1.5 s target).
+
 ---
 
 # PHASE 7 — Final review (and optional deploy)
+
+> ✅ Done 2026-10-27: steps 1–3 (Final Comparison in `CLAUDE.md`, `README.md` with a mermaid diagram, clean-up: unused `vanna_*` settings removed, `eval.diff` fixed for the Windows console, `.env.example` checked complete, ruff + pyright clean, 409 tests). Step 4 (deploy): not now (user's choice).
+>
+> **Post-Phase-7 improvements (2026-10-28, user's requests after reviewing failed goldens in the app):** fix: Docling's over-long headings were dropping body text, 6 true_data PDFs re-indexed (7,286 → 7,307 chunks); the answer prompt forbids the model's own knowledge (CRAG web results count as documents, their YAML may be used); HyDE's BM25 searches the question + passages; hybrid search keeps at most 2 chunks per document and HyDE answers from 8 chunks (free replay: hybrid recall 0.601 → 0.636, HyDE 0.804 → 0.905); the grounding check and the eval judge see each chunk's source; Streamlit got demo questions per technique (its eval dashboard was removed, then re-added with run comparison). Every change was screened with a free retrieval replay before any credit was spent, then spot-checked with subset evals (`eval/results/naive_rag_v2.json`, `hybrid_rag_v2.json`, logged as SUBSET rows in `CLAUDE.md`): `naive` q-001..q-005 faith 0.895 / rel 0.944; `hybrid` on q-005..q-008 + q-040 faith 0.812 / rel 0.707 / prec 1.000 / rec 0.800 (E2 on the same IDs 0.48 / 0.91 / 0.96 / 0.90). 420 tests. Next comparable checkpoint: a full `defaults` run (~$0.5), since the judge now sees chunk sources.
 
 1. **Final Comparison:** Claude Code reads the whole Eval Results Log in `CLAUDE.md` and writes a **Final Comparison** table (baseline E1 → best profile), with a short explanation for each metric of which phase moved it and why. It also recommends the default flags for production, with the cost and latency trade-offs.
 2. **README.md:** architecture diagram (mermaid), setup steps, commands, and eval results.
 3. **Clean-up:** run `ruff`, make sure every test passes, remove dead code, and make sure `.env.example` is complete.
 4. **Optional deploy (cheapest first):** Render/Railway (API) + Neon (Postgres) + Qdrant Cloud + Upstash + Streamlit Cloud. Or one small EC2/Lightsail running docker compose. Set a budget alarm first.
+
+---
+
+# PHASE 8 — Adaptive RAG: the chatbot picks the technique (optional, not started)
+
+> Status: **idea saved 2026-10-28, not started** (user: "keep this idea in mind, we will update the app in the future"). Start only on the user's "go", like every phase.
+
+**Goal:** users of an organisation don't know what hybrid search, CRAG or HyDE are, so they shouldn't have to choose. The chatbot picks the technique per question, and pays for the expensive steps only on hard questions. Today the defaults are fixed (hybrid + CRAG) and the toggles are in the sidebar.
+
+**Why not just turn everything on (measured):** rerank lowered quality with every CPU-sized reranker (E2: precision −0.06; the gte one that helped took 13–27 s/query); Self-RAG added a call to every question and made 0 retries in E3; HyDE fixes vague / paraphrased questions (q-003, q-016, q-038) but adds a call (~1.5k tokens, ~1.5 s) to easy ones; E3 `all` cost ~4 LLM calls per question. Different questions need different techniques: exact terms → BM25 / hybrid (q-008), everyday wording → HyDE (q-003), recent / off-corpus → CRAG web (q-019), too vague → clarify (q-023), numbers → SQL (q-025).
+
+**Design: a smart default that escalates only when needed**
+```
+question → router (sql | rag | hybrid) → hybrid search → CRAG grades the chunks
+   ├─ correct (good chunks)            → answer                                  (cheapest path, most questions)
+   ├─ ambiguous / incorrect, in scope  → retry retrieval WITH HyDE → re-grade → web only if still weak
+   ├─ too vague                         → ask the user for detail
+   └─ off-topic                         → decline
+answer → strict grounding check → below the pass score → one rewrite (and/or one HyDE retry) → answer or "couldn't verify"
+```
+
+| File | Change |
+|---|---|
+| `app/services/rag_service.py` | after CRAG's grade: `ambiguous` / `incorrect` and in scope → re-run `_retrieve` with HyDE before any web search; record the path taken (`metadata.path`: e.g. `hybrid`, `hybrid→hyde`, `hybrid→hyde→web`) |
+| `app/security/grounding_check.py` / `rag_service` | optional: a failed grounding check may trigger one HyDE re-retrieval instead of only a rewrite |
+| `app/config.py`, `.env(.example)` | `ADAPTIVE_RAG_ENABLED` (default off until evaluated), `ADAPTIVE_HYDE_ON` (which CRAG actions escalate) |
+| `scripts/streamlit_app.py` | end users: no toggles (a debug / admin view keeps them); show the path taken as a badge; 👍 / 👎 feedback buttons |
+| `app/api/` + a migration | store the feedback (question, answer id, rating) for review; 👎 answers become new goldens |
+| `eval/` | profile `adaptive`; compare with `defaults` on the full golden set (dashboard, shared IDs) |
+
+**Always on (never optional):** input guard, PII redaction, token budget, spotlighting, strict grounding check, citations, cache. **Off unless proven:** rerank (needs a faster / better reranker), Self-RAG (escalation covers most of it, cheaper).
+
+**Enterprise-readiness beyond retrieval (separate items):** SSO, per-document permissions, audit logs, an ingestion pipeline that keeps docs current, monitoring / alerts / SLOs, per-team cost limits, the Docker image rebuild and a deploy.
+
+**Done when:** `adaptive` ≥ `defaults` on faithfulness / precision / recall (same IDs, same judge) and fixes the HyDE-type goldens (q-003, q-016, q-038) without HyDE on by default; easy questions keep today's cost (~7k tokens) and the mean cost per question rises by ≤ 25%; the path taken is visible per answer; `make test` green.
+
+**🧪 EVAL CHECKPOINT E8:** `adaptive` vs `defaults` on all goldens (cache off), record both; observations: the share of questions that escalated, cost / latency per path, which goldens flipped.
 
 ---
 
@@ -993,16 +1038,16 @@ One test file per security module, plus `test_security_pipeline.py`: an injectio
 - [x] `mps` device on Windows → `cuda`/`cpu` (Phase 2)
 - [x] CRAG with no Tavily key returns empty chunks (Phase 3)
 - [x] Self-RAG fails open on grader errors (Phase 3)
-- [ ] Hard-coded confidence → use the real grader/grounding score (Phases 3 and 6) _(Phase 3 part done: reflection / CRAG scores; grounding in Phase 6)_
+- [x] Hard-coded confidence → use the real grader/grounding score (Phases 3 and 6) _(confidence = the grounding score when it ran)_
 - [x] Hybrid `retrieve_rag` passes file names as text (Phase 4)
 - [x] Hybrid path runs SQL before approval (Phase 4)
 - [x] Intent classified twice (Phase 4)
 - [x] Weak SELECT-only check → sqlglot + read-only role (Phase 4)
-- [ ] `/query/sql/execute` skips the security checks, and `query_id` ownership is never checked (Phases 4 and 6) _(Phase 4 part done: auth, rate limit, ownership → 404; security layers in Phase 6)_
+- [x] `/query/sql/execute` skips the security checks, and `query_id` ownership is never checked (Phases 4 and 6) _(auth, rate limit, ownership → 404, token budget, output moderation + PII, grounding)_
 - [x] Cache `clear()` is a no-op for Redis (Phase 5)
-- [ ] Output validator not wired in (Phase 6)
-- [ ] Token budget consumes the estimate, not actual usage (Phase 6)
-- [ ] llm-guard fails open (Phase 6)
+- [x] Output validator not wired in (Phase 6) _(L9 on every answer + the grounding check's JSON)_
+- [x] Token budget consumes the estimate, not actual usage (Phase 6)
+- [x] llm-guard fails open (Phase 6) _(`SECURITY_FAIL_CLOSED=true` blocks)_
 
 ## Appendix B — Starter prompt to give Claude Code
 

@@ -1,0 +1,586 @@
+{
+  "profile": "hybrid+hyde",
+  "flags": {
+    "search_mode": "hybrid",
+    "top_k": 5,
+    "enable_rerank": false,
+    "enable_hyde": true,
+    "enable_crag": false,
+    "enable_self_reflective": false
+  },
+  "timestamp": "20261027T225833Z",
+  "git_commit": "28575b7",
+  "questions_file": "goldens_hyde.yaml",
+  "filter": null,
+  "judge_model": "qwen-3.8-27b",
+  "judge_context": "source+text",
+  "answer_relevancy_strictness": 1,
+  "answer_model": "gpt-oss-120b",
+  "pipeline": {
+    "grader_model": "gpt-oss-120b",
+    "reasoning_effort": "low",
+    "rrf_k": 60,
+    "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    "reranker_max_length": 256,
+    "reranker_initial_top_k": 20,
+    "hyde_num_hypotheses": 3,
+    "hyde_sparse_query": "question+passages",
+    "crag_relevance_threshold": 0.7,
+    "crag_ambiguous_threshold": 0.5,
+    "reflection_min_score": 0.8,
+    "max_reflection_retries": 2,
+    "grounding_enabled": true,
+    "grounding_pass_score": 0.8,
+    "grounding_warn_score": 0.5,
+    "security_models_enabled": true,
+    "prompt_injection_threshold": 0.9,
+    "toxicity_threshold": 0.75,
+    "output_toxicity_threshold": 0.5
+  },
+  "invoker": "agent",
+  "cache": {
+    "enabled": false,
+    "cleared_before_run": false,
+    "stats": {
+      "enabled": false,
+      "backend": "redis+memory",
+      "memory_entries": 0,
+      "tiers": {
+        "intent": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "embedding": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "rag_answer": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "sql_gen": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "sql_result": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        }
+      }
+    }
+  },
+  "rows": [
+    {
+      "id": "q-013",
+      "question": "Is there a way to isolate network traffic between services in a cluster?",
+      "intent": "rag",
+      "demonstrates_feature": "hyde",
+      "golden_sources": [
+        "concepts__services-networking__network-policies.html"
+      ],
+      "golden_answer_keywords": [
+        "NetworkPolicy",
+        "ingress",
+        "egress"
+      ],
+      "answer": "Yes.\u202fKubernetes provides isolation of network traffic between services (and between pods) by using **NetworkPolicies**.  \n\n* NetworkPolicies let you specify which pods, namespaces or IP blocks a pod may send traffic to or receive traffic from, effectively controlling traffic at the IP\u2011address or port level (OSI layer\u202f3/4)\u202f[1].  \n* By default all traffic is allowed, but you can create \u201cdefault\u2011deny\u201d policies that block all ingress, all egress, or both, and then add explicit allow rules for the services that should be reachable\u202f[2][5].  \n* When a pod is isolated for ingress or egress (i.e., a NetworkPolicy that selects the pod and includes the corresponding `policyTypes` exists), only the connections allowed by the applicable policies are permitted; the policies are additive, so a connection must be allowed by both the source pod\u2019s egress policy and the destination pod\u2019s ingress policy\u202f[3].  \n\nThus, to isolate traffic between services you define NetworkPolicies that deny unwanted traffic and explicitly allow the required service\u2011to\u2011service communication.",
+      "sources": [
+        "concepts__services-networking__network-policies.html"
+      ],
+      "contexts": [
+        "Concepts \u203a Services-Networking \u203a Network-Policies\nNetwork Policies | Kubernetes  \nNetwork PoliciesIf you want to control traffic flow at the IP address or port level (OSI layer 3 or 4), NetworkPolicies allow you to specify rules for traffic flow within your cluster, and also between Pods and the outside world. Your cluster must use a network plugin that supports NetworkPolicy enforcement.If you want to control traffic flow at the IP address or port level for TCP, UDP, and SCTP protocols,  \nthen you might consider using Kubernetes NetworkPolicies for particular applications in your cluster.  \nNetworkPolicies are an application-centric construct which allow you to specify how a  \npod is allowed to communicate with various network  \n\"entities\" (we use the word \"entity\" here to avoid overloading the more common terms such as  \n\"endpoints\" and \"services\", which have specific Kubernetes connotations) over the network.  \nNetworkPolicies apply to a connection with a pod on one or both ends, and are not relevant to  \nother connections.The entities that a Pod can communicate with are identified through a combination of the following  \nthree identifiers:Other pods that are allowed (exception: a pod cannot block access to itself)Namespaces that are allowedIP blocks (exception: traffic to and from the node where a Pod is running is always allowed,  \nregardless of the IP address of the Pod or the node)When defining a pod- or namespace-based NetworkPolicy, you use a  \nselector to specify what traffic is allowed to  \nand from the Pod(s) that match the selector.Meanwhile, when IP-based NetworkPolicies are created, we define policies based on IP blocks (CIDR ranges).PrerequisitesNetwork policies are implemented by the network plugin.  \nTo use network policies, you must be using a networking solution which supports NetworkPolicy.  \nCreating a NetworkPolicy resource without a controller that implements it will have no effect.The two sorts of pod isolationThere are two sorts of isolation for a pod: isolation for egress, and isolation for ingress.  \nThey concern what connections may be established. \"Isolation\" here is not absolute, rather it  \nmeans \"some restrictions apply\". The alternative, \"non-isolated for $direction\", means that no  \nrestrictions apply in the stated direction. The two sorts of isolation (or not) are declared",
+        "Concepts \u203a Services-Networking \u203a Network-Policies\nthose pods to be denied. This policy has no effect on isolation for egress from any pod.Default deny all egress trafficYou can create a \"default\" egress isolation policy for a namespace by creating a NetworkPolicy  \nthat selects all pods but does not allow any egress traffic from those pods.service/networking/network-policy-default-deny-egress.yaml  \n---  \napiVersion: networking.k8s.io/v1  \nkind: NetworkPolicy  \nmetadata:  \nname: default-deny-egress  \nspec:  \npodSelector: {}  \npolicyTypes:  \n- Egress  \nThis ensures that even pods that aren't selected by any other NetworkPolicy will not be allowed  \negress traffic. This policy does not change the ingress isolation behavior of any pod.Caution:A default deny-all egress policy also blocks DNS traffic. If your workloads need DNS  \nresolution, you must add a separate NetworkPolicy that allows egress to your  \ncluster's DNS service.Allow all egress trafficIf you want to allow all connections from all pods in a namespace, you can create a policy that  \nexplicitly allows all outgoing connections from pods in that namespace.service/networking/network-policy-allow-all-egress.yaml  \n---  \napiVersion: networking.k8s.io/v1  \nkind: NetworkPolicy  \nmetadata:  \nname: allow-all-egress  \nspec:  \npodSelector: {}  \negress:  \n- {}  \npolicyTypes:  \n- Egress  \nWith this policy in place, no additional policy or policies can cause any outgoing connection from  \nthose pods to be denied. This policy has no effect on isolation for ingress to any pod.Default deny all ingress and all egress trafficYou can create a \"default\" policy for a namespace which prevents all ingress AND egress traffic by  \ncreating the following NetworkPolicy in that namespace.service/networking/network-policy-default-deny-all.yaml  \n---  \napiVersion: networking.k8s.io/v1  \nkind: NetworkPolicy  \nmetadata:  \nname: default-deny-all  \nspec:  \npodSelector: {}  \npolicyTypes:  \n- Ingress  \n- Egress",
+        "Concepts \u203a Services-Networking \u203a Network-Policies\nindependently, and are both relevant for a connection from one pod to another.By default, a pod is non-isolated for egress; all outbound connections are allowed.  \nA pod is isolated for egress if there is any NetworkPolicy that both selects the pod and has  \n\"Egress\" in its policyTypes; we say that such a policy applies to the pod for egress.  \nWhen a pod is isolated for egress, the only allowed connections from the pod are those allowed by  \nthe egress list of some NetworkPolicy that applies to the pod for egress. Reply traffic for those  \nallowed connections will also be implicitly allowed.  \nThe effects of those egress lists combine additively.By default, a pod is non-isolated for ingress; all inbound connections are allowed.  \nA pod is isolated for ingress if there is any NetworkPolicy that both selects the pod and  \nhas \"Ingress\" in its policyTypes; we say that such a policy applies to the pod for ingress.  \nWhen a pod is isolated for ingress, the only allowed connections into the pod are those from  \nthe pod's node and those allowed by the ingress list of some NetworkPolicy that applies to  \nthe pod for ingress. Reply traffic for those allowed connections will also be implicitly allowed.  \nThe effects of those ingress lists combine additively.Network policies do not conflict; they are additive. If any policy or policies apply to a given  \npod for a given direction, the connections allowed in that direction from that pod is the union of  \nwhat the applicable policies allow. Thus, order of evaluation does not affect the policy result.For a connection from a source pod to a destination pod to be allowed, both the egress policy on  \nthe source pod and the ingress policy on the destination pod need to allow the connection. If  \neither side does not allow the connection, it will not happen.The NetworkPolicy resourceSee the NetworkPolicy  \nreference for a full definition of the resource.An example NetworkPolicy might look like this:service/networking/networkpolicy.yaml  \napiVersion: networking.k8s.io/v1  \nkind: NetworkPolicy  \nmetadata:  \nname: test-network-policy  \nnamespace: default  \nspec:  \npodSelector:  \nmatchLabels:  \nrole: db  \npolicyTypes:  \n- Ingress  \n- Egress  \ningress:",
+        "Concepts \u203a Services-Networking \u203a Network-Policies\nthe same node), and will apply NetworkPolicy to hostNetwork pods just like it does  \nto pod-network pods.The network plugin cannot properly distinguish hostNetwork pod traffic,  \nand so it ignores hostNetwork pods when matching podSelector and namespaceSelector.  \nTraffic to/from hostNetwork pods is treated the same as all other traffic to/from the node IP.  \n(This is the most common implementation.)This applies whena hostNetwork pod is selected by spec.podSelector. ...  \nspec:  \npodSelector:  \nmatchLabels:  \nrole: client  \n...  \na hostNetwork pod is selected by a podSelector or namespaceSelector in an ingress or egress rule. ...  \ningress:  \n- from:  \n- podSelector:  \nmatchLabels:  \nrole: client  \n...  \nAt the same time, since hostNetwork pods have the same IP addresses as the nodes they reside on,  \ntheir connections will be treated as node connections. For example, you can allow traffic  \nfrom a hostNetwork Pod using an ipBlock rule.What you can't do with network policies (at least, not yet)As of Kubernetes 1.36, the following functionality does not exist in the  \nNetworkPolicy API, but you might be able to implement workarounds using Operating System  \ncomponents (such as SELinux, OpenVSwitch, IPTables, and so on) or Layer 7 technologies (Ingress  \ncontrollers, Service Mesh implementations) or admission controllers. In case you are new to  \nnetwork security in Kubernetes, its worth noting that the following User Stories cannot (yet) be  \nimplemented using the NetworkPolicy API.Forcing internal cluster traffic to go through a common gateway (this might be best served with  \na service mesh or other proxy).Anything TLS related (use a service mesh or ingress controller for this).Node specific policies (you can use CIDR notation for these, but you cannot target nodes by  \ntheir Kubernetes identities specifically).Targeting of services by name (you can, however, target pods or namespaces by their  \nlabels, which is often a viable workaround).Creation or management of \"Policy requests\" that are fulfilled by a third party.Default policies which are applied to all namespaces or pods (there are some third party",
+        "Concepts \u203a Services-Networking \u203a Network-Policies\ndestinations. These should be cluster-external IPs, since Pod IPs are ephemeral and unpredictable.Cluster ingress and egress mechanisms often require rewriting the source or destination IP  \nof packets. In cases where this happens, it is not defined whether this happens before or  \nafter NetworkPolicy processing, and the behavior may be different for different  \ncombinations of network plugin, cloud provider, Service implementation, etc.In the case of ingress, this means that in some cases you may be able to filter incoming  \npackets based on the actual original source IP, while in other cases, the \"source IP\" that  \nthe NetworkPolicy acts on may be the IP of a LoadBalancer or of the Pod's node, etc.For egress, this means that connections from pods to Service IPs that get rewritten to  \ncluster-external IPs may or may not be subject to ipBlock-based policies.Default policiesBy default, if no policies exist in a namespace, then all ingress and egress traffic is allowed to  \nand from pods in that namespace. The following examples let you change the default behavior  \nin that namespace.Default deny all ingress trafficYou can create a \"default\" ingress isolation policy for a namespace by creating a NetworkPolicy  \nthat selects all pods but does not allow any ingress traffic to those pods.service/networking/network-policy-default-deny-ingress.yaml  \n---  \napiVersion: networking.k8s.io/v1  \nkind: NetworkPolicy  \nmetadata:  \nname: default-deny-ingress  \nspec:  \npodSelector: {}  \npolicyTypes:  \n- Ingress  \nThis ensures that even pods that aren't selected by any other NetworkPolicy will still be isolated  \nfor ingress. This policy does not affect isolation for egress from any pod.Allow all ingress trafficIf you want to allow all incoming connections to all pods in a namespace, you can create a policy  \nthat explicitly allows that.service/networking/network-policy-allow-all-ingress.yaml  \n---  \napiVersion: networking.k8s.io/v1  \nkind: NetworkPolicy  \nmetadata:  \nname: allow-all-ingress  \nspec:  \npodSelector: {}  \ningress:  \n- {}  \npolicyTypes:  \n- Ingress  \nWith this policy in place, no additional policy or policies can cause any incoming connection to"
+      ],
+      "context_sources": [
+        "concepts__services-networking__network-policies.html",
+        "concepts__services-networking__network-policies.html",
+        "concepts__services-networking__network-policies.html",
+        "concepts__services-networking__network-policies.html",
+        "concepts__services-networking__network-policies.html"
+      ],
+      "context_source_names": [
+        "concepts__services-networking__network-policies.html",
+        "concepts__services-networking__network-policies.html",
+        "concepts__services-networking__network-policies.html",
+        "concepts__services-networking__network-policies.html",
+        "concepts__services-networking__network-policies.html"
+      ],
+      "latency_ms": 93690.0,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "concepts__services-networking__network-policies.html"
+        ]
+      },
+      "tokens_used": 7463,
+      "confidence": 1.0,
+      "crag_action": null,
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [
+        "Yes. You can use a NetworkPolicy object to define ingress and egress rules that isolate traffic at the pod level. Apply the policy with `kubectl apply -f policy.yaml` and ensure your CNI plugin supports NetworkPolicy enforcement.",
+        "Another option is to place services in separate namespaces and use namespace-scoped NetworkPolicies to restrict cross-namespace communication. Combine this with `kubectl label namespace <name>=isolated` and reference the label in the policy's `namespaceSelector` field.",
+        "For more granular control, consider using Service Meshes like Istio, which provide mutual TLS and traffic routing rules that can segment traffic between services without modifying the underlying NetworkPolicy objects."
+      ],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 1.0,
+      "unsupported_claims": [],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0004
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 0.6667,
+        "answer_relevancy": 0.874,
+        "context_precision": 1.0,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    },
+    {
+      "id": "q-014",
+      "question": "How can I make sure a critical workload always has compute resources reserved?",
+      "intent": "rag",
+      "demonstrates_feature": "hyde",
+      "golden_sources": [
+        "concepts__scheduling-eviction__node-pressure-eviction.docx",
+        "concepts__scheduling-eviction__pod-priority-preemption.html"
+      ],
+      "golden_answer_keywords": [
+        "requests",
+        "limits",
+        "QoS"
+      ],
+      "answer": "To guarantee that a critical workload always has compute resources set aside, define a **ResourceQuota** that is scoped to a specific **PriorityClass** and give that quota a hard limit for CPU (and/or memory).  \n\n1. **Create a PriorityClass** for the critical workload (e.g., `high`).  \n2. **Create a ResourceQuota** in the workload\u2019s namespace that includes a `scopeSelector` matching that PriorityClass and sets the desired hard limits for `cpu` (and optionally `memory`).  \n\n```yaml\napiVersion: v1\nkind: ResourceQuota\nmetadata:\n  name: critical-workload\nspec:\n  hard:\n    cpu: \"1000\"          # reserve the amount you need\n    memory: \"200Gi\"\n  scopeSelector:\n    matchExpressions:\n    - operator: In\n      scopeName: PriorityClass\n      values: [\"high\"]\n```\n\nWith this configuration, only Pods that have the `high` priority class can consume the reserved CPU/Memory, and the quota system will enforce that the reserved amount is not exceeded. Existing Pods are not affected, but any new Pod (or workload that creates Pods) must satisfy the quota, ensuring the critical workload always has the compute resources it needs.  \n\n*Documented in the ResourceQuota description that a quota can be scoped by `PriorityClass` and that it enforces CPU/memory limits for matching Pods*[3]. *Also notes that ResourceQuotas require pods to specify requests or limits for enforced resources*[4].",
+      "sources": [
+        "concepts__workloads__pods.html",
+        "concepts__policy__limit-range.html",
+        "concepts__policy__resource-quotas.txt"
+      ],
+      "contexts": [
+        "Concepts \u203a Workloads \u203a Pods\nresource than the limit you set.CPU limits are enforced by CPU throttling. When a container approaches its  \nCPU limit, the kernel restricts its access to CPU. Memory limits are enforced  \nby the kernel with out-of-memory (OOM) kills when a container exceeds its limit.Note:Setting CPU limits involves a trade-off. CPU limits help prevent noisy neighbor  \nproblems where a single workload starves others on the same node. This is  \nespecially important in multi-tenant environments. However, CPU limits can cause  \nthrottling even when the node has spare CPU capacity, potentially degrading  \nlatency-sensitive workload performance. Whether to set CPU limits depends on  \nyour environment, workload characteristics, and isolation requirements.For details on resource units, enforcement behavior, and configuration examples,  \nsee Resource Management for Pods and Containers.Static PodsStatic Pods are managed directly by the kubelet daemon on a specific node,  \nwithout the API server  \nobserving them.  \nWhereas most Pods are managed by the control plane (for example, a  \nDeployment), for static  \nPods, the kubelet directly supervises each static Pod (and restarts it if it fails).Static Pods are always bound to one Kubelet on a specific node.  \nThe main use for static Pods is to run a self-hosted control plane: in other words,  \nusing the kubelet to supervise the individual control plane components.The kubelet automatically tries to create a mirror Pod  \non the Kubernetes API server for each static Pod.  \nThis means that the Pods running on a node are visible on the API server,  \nbut cannot be controlled from there. See the guide Create static Pods  \nfor more information.Note:The spec of a static Pod cannot refer to other API objects  \n(e.g., ServiceAccount,  \nConfigMap,  \nSecret, etc).Pods with multiple containersPods are designed to support multiple cooperating processes (as containers) that form  \na cohesive unit of service. The containers in a Pod are automatically co-located and  \nco-scheduled on the same physical or virtual machine in the cluster. The containers  \ncan share resources and dependencies, communicate with one another, and coordinate  \nwhen and how they are terminated.Pods in a Kubernetes cluster are used in two main ways:Pods that run a single container. The \"one-container-per-Pod\" model is the  \nmost common Kubernetes use case; in this case, you can think of a Pod as a",
+        "Concepts \u203a Policy \u203a Limit-Range\nthen that Pod will not be scheduled, failing with an error similar to:Pod \"example-conflict-with-limitrange-cpu\" is invalid: spec.containers[0].resources.requests: Invalid value: \"700m\": must be less than or equal to cpu limit  \nIf you set both request and limit, then that new Pod will be scheduled successfully  \neven with the same LimitRange in place:concepts/policy/limit-range/example-no-conflict-with-limitrange-cpu.yaml  \napiVersion: v1  \nkind: Pod  \nmetadata:  \nname: example-no-conflict-with-limitrange-cpu  \nspec:  \ncontainers:  \n- name: demo  \nimage: registry.k8s.io/pause:3.8  \nresources:  \nrequests:  \ncpu: 700m  \nlimits:  \ncpu: 700m  \nExample resource constraintsExamples of policies that could be created using LimitRange are:In a 2 node cluster with a capacity of 8 GiB RAM and 16 cores, constrain Pods in a  \nnamespace to request 100m of CPU with a max limit of 500m for CPU and request 200Mi  \nfor Memory with a max limit of 600Mi for Memory.Define default CPU limit and request to 150m and memory default request to 300Mi for  \nContainers started with no cpu and memory requests in their specs.In the case where the total limits of the namespace is less than the sum of the limits  \nof the Pods/Containers, there may be contention for resources. In this case, the  \nContainers or Pods will not be created.Neither contention nor changes to a LimitRange will affect already created resources.What's nextFor examples on using limits, see:how to configure minimum and maximum CPU constraints per namespace.how to configure minimum and maximum Memory constraints per namespace.how to configure default CPU Requests and Limits per namespace.how to configure default Memory Requests and Limits per namespace.how to configure minimum and maximum Storage consumption per namespace.a detailed example on configuring quota per namespace.Refer to the LimitRanger design document  \nfor context and historical information.FeedbackWas this page helpful?Yes  \nNoThanks for the feedback. If you have a specific, answerable question about how to use Kubernetes, ask it on  \nStack Overflow.  \nOpen an issue in the GitHub Repository if you want to  \nreport a problem",
+        "- name: \"ResourceQuota\" configuration: apiVersion: apiserver.config.k8s.io/v1 kind: ResourceQuotaConfiguration limitedResources:\n- resource: pods matchScopes:\n- scopeName: CrossNamespacePodAffinity operator: Exists With the above configuration, pods can use namespaces and namespaceSelector in pod affinity only if the namespace where they are created have a resource quota object with CrossNamespacePodAffinity scope and a hard limit greater than or equal to the number of pods using those fields.PriorityClass scopeFEATURE STATE: Kubernetes v1.17 [stable]A ResourceQuota with a PriorityClass scope only matches Pods that have a particular priority class, and only if any scopeSelector in the quota spec selects a particular Pod.Pods can be created at a specific priority. You can control a pod's consumption of system resources based on a pod's priority, by using the scopeSelector field in the quota spec.When quota is scoped for PriorityClass using the scopeSelector field, the ResourceQuota can only track (and limit) the following resources:podscpumemoryephemeral-storagelimits.cpulimits.memorylimits.ephemeral-storagerequests.cpurequests.memoryrequests.ephemeral-storageExampleThis example creates a ResourceQuota matches it with pods at specific priorities. The example works as follows:Pods in the cluster have one of the three PriorityClasses, \"low\", \"medium\", \"high\".If you want to try this out, use a testing cluster and set up those three PriorityClasses before you continue.One quota object is created for each priority.Inspect this set of ResourceQuotas:policy/quota.yaml apiVersion: v1 kind: ResourceQuota metadata: name: pods-high spec: hard: cpu: \"1000\" memory: \"200Gi\" pods: \"10\" scopeSelector: matchExpressions:\n- operator: In scopeName: PriorityClass values: [\"high\"]",
+        "In that case you can check the status of the Deployment, for example with kubectl describe, to see what has happened.For cpu and memory resources, ResourceQuotas enforce that every (new) pod in that namespace sets a limit for that resource. If you enforce a resource quota in a namespace for either cpu or memory, you and other clients, must specify either requests or limits for that resource, for every new Pod you submit. If you don't, the control plane may reject admission for that Pod.For other resources: ResourceQuota works and will ignore pods in the namespace without setting a limit or request for that resource. It means that you can create a new pod without limit/request for ephemeral storage if the resource quota limits the ephemeral storage of this namespace.You can use a LimitRange to automatically set a default request for these resources.The name of a ResourceQuota object must be a valid DNS subdomain name.Examples of policies that could be created using namespaces and quotas are:In a cluster with a capacity of 32 GiB RAM, and 16 cores, let team A use 20 GiB and 10 cores, let B use 10GiB and 4 cores, and hold 2GiB and 2 cores in reserve for future allocation.Limit the \"testing\" namespace to using 1 core and 1GiB RAM. Let the \"production\" namespace use any amount.In the case where the total capacity of the cluster is less than the sum of the quotas of the namespaces, there may be contention for resources. This is handled on a first-come-first-served basis.Enabling Resource QuotaResourceQuota support is enabled by default for many Kubernetes distributions. It is enabled when the API server --enable-admission-plugins= flag has ResourceQuota as one of its arguments.A resource quota is enforced in a particular namespace when there is a ResourceQuota in that namespace.Types of resource quotaThe ResourceQuota mechanism lets you enforce different kinds of limits.",
+        "Resource Quotas | Kubernetes Resource QuotasWhen several users or teams share a cluster with a fixed number of nodes, there is a concern that one team could use more than its fair share of resources.Resource quotas are a tool for administrators to address this concern.A resource quota, defined by a ResourceQuota object, provides constraints that limit aggregate resource consumption per namespace. A ResourceQuota can also limit the quantity of objects that can be created in a namespace by API kind, as well as the total amount of infrastructure resources that may be consumed by API objects found in that namespace.Caution:Neither contention nor changes to quota will affect already created resources.How Kubernetes ResourceQuotas workResourceQuotas work like this:Different teams work in different namespaces. This separation can be enforced with RBAC or any other authorization mechanism.A cluster administrator creates at least one ResourceQuota for each namespace.To make sure the enforcement stays enforced, the cluster administrator should also restrict access to delete or update that ResourceQuota; for example, by defining a ValidatingAdmissionPolicy.Users create resources (pods, services, etc.) in the namespace, and the quota system tracks usage to ensure it does not exceed hard resource limits defined in a ResourceQuota.You can apply a scope to a ResourceQuota to limit where it applies,If creating or updating a resource violates a quota constraint, the control plane rejects that request with HTTP status code 403 Forbidden. The error includes a message explaining the constraint that would have been violated.If quotas are enabled in a namespace for resource such as cpu and memory, users must specify requests or limits for those values when they define a Pod; otherwise, the quota system may reject pod creation.The resource quota walkthrough shows an example of how to avoid this problem.Note:You can define a LimitRange to force defaults on pods that make no compute resource requirements (so that users don't have to remember to do that).You often do not create Pods directly; for example, you more usually create a workload management object such as a Deployment. If you create a Deployment that tries to use more resources than are available, the creation of the Deployment (or other workload management object) succeeds, but the Deployment may not be able to get all of the Pods it manages to exist."
+      ],
+      "context_sources": [
+        "concepts__workloads__pods.html",
+        "concepts__policy__limit-range.html",
+        "concepts__policy__resource-quotas.txt",
+        "concepts__policy__resource-quotas.txt",
+        "concepts__policy__resource-quotas.txt"
+      ],
+      "context_source_names": [
+        "concepts__workloads__pods.html",
+        "concepts__policy__limit-range.html",
+        "concepts__policy__resource-quotas.txt",
+        "concepts__policy__resource-quotas.txt",
+        "concepts__policy__resource-quotas.txt"
+      ],
+      "latency_ms": 96511.9,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 0.0,
+        "matched": []
+      },
+      "tokens_used": 7467,
+      "confidence": 0.8333,
+      "crag_action": null,
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [
+        "Create a ResourceQuota in the namespace and set the \"hard\" limits for cpu and memory to guarantee that the quota cannot be exceeded. Then define a LimitRange that specifies minimum cpu and memory requests for the critical workload's pod spec, ensuring the scheduler always reserves the requested resources.",
+        "Use a PriorityClass with a high value (e.g., \"system-cluster-critical\") and set the pod's \"priorityClassName\" to that class. Combine this with guaranteed QoS by specifying equal \"requests\" and \"limits\" for cpu and memory, so the scheduler treats the pod as non\u2011preemptible and reserves the compute resources.",
+        "Deploy the workload as a DaemonSet on dedicated nodes and mark those nodes with a custom node label (e.g., \"critical=true\"). Then use a nodeSelector or nodeAffinity in the pod spec to bind the pods to those nodes, and configure the nodes' allocatable resources via a static kubelet configuration to reserve the required compute capacity."
+      ],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 0.8333,
+      "unsupported_claims": [
+        "You need to create a PriorityClass for the critical workload (e.g., high)"
+      ],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0004
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 0.3529,
+        "answer_relevancy": 0.8943,
+        "context_precision": 0.0,
+        "context_recall": 0.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    },
+    {
+      "id": "q-015",
+      "question": "How do I make sure my app keeps running even if a server dies?",
+      "intent": "rag",
+      "demonstrates_feature": "hyde",
+      "golden_sources": [
+        "tutorials__kubernetes-basics__deploy-app__deploy-intro.txt",
+        "tasks__run-application__run-stateless-application-deployment.docx",
+        "tutorials__kubernetes-basics__scale__scale-intro.html"
+      ],
+      "golden_answer_keywords": [
+        "deployment",
+        "replica",
+        "replicas"
+      ],
+      "answer": "Use a **Deployment** to run your application.\u202fA Deployment creates a ReplicaSet that continuously maintains the desired number of Pods. If a node (server) dies, the Pods that were running on that node are terminated, and the Deployment controller notices that the current number of Pods is below the desired replica count. It then creates new Pods on other healthy nodes so the application keeps running\u202f[1].  \n\nThe Deployment\u2019s `.spec.replicas` field specifies how many Pods you want available, and the controller will automatically replace any Pods that disappear because of a node failure\u202f[5]. This provides the \u201ckeep\u2011running\u201d guarantee you\u2019re looking for.",
+      "sources": [
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__workloads__pods.html",
+        "concepts__scheduling-eviction__pod-priority-preemption.html"
+      ],
+      "contexts": [
+        "Deployments | Kubernetes DeploymentsA Deployment manages a set of Pods to run an application workload, usually one that doesn't maintain state.A Deployment provides declarative updates for Pods and ReplicaSets.You describe a desired state in a Deployment, and the Deployment Controller changes the actual state to the desired state at a controlled rate. You can define Deployments to create new ReplicaSets, or to remove existing Deployments and adopt all their resources with new Deployments.Note:Do not manage ReplicaSets owned by a Deployment. Consider opening an issue in the main Kubernetes repository if your use case is not covered below.Use CaseThe following are typical use cases for Deployments:Create a Deployment to rollout a ReplicaSet. The ReplicaSet creates Pods in the background. Check the status of the rollout to see if it succeeds or not.Declare the new state of the Pods by updating the PodTemplateSpec of the Deployment. A new ReplicaSet is created, and the Deployment gradually scales it up while scaling down the old ReplicaSet, ensuring Pods are replaced at a controlled rate. Each new ReplicaSet updates the revision of the Deployment.Rollback to an earlier Deployment revision if the current state of the Deployment is not stable. Each rollback updates the revision of the Deployment.Scale up the Deployment to facilitate more load.Pause the rollout of a Deployment to apply multiple fixes to its PodTemplateSpec and then resume it to start a new rollout.Use the status of the Deployment as an indicator that a rollout has stuck.Clean up older ReplicaSets that you don't need anymore.Creating a DeploymentThe following is an example of a Deployment. It creates a ReplicaSet to bring up three nginx Pods:controllers/nginx-deployment.yaml apiVersion: apps/v1 kind: Deployment metadata: name: nginx-deployment labels: app: nginx spec: replicas: 3 selector: matchLabels: app: nginx template: metadata: labels: app: nginx spec: containers: - name: nginx image: nginx:1.14.2 ports: - containerPort: 80 In this example:A Deployment named nginx-deployment is created, indicated by the .metadata.name field. This name will become the basis for the ReplicaSets and Pods which are created later.",
+        "Concepts \u203a Workloads \u203a Pods\nresource than the limit you set.CPU limits are enforced by CPU throttling. When a container approaches its  \nCPU limit, the kernel restricts its access to CPU. Memory limits are enforced  \nby the kernel with out-of-memory (OOM) kills when a container exceeds its limit.Note:Setting CPU limits involves a trade-off. CPU limits help prevent noisy neighbor  \nproblems where a single workload starves others on the same node. This is  \nespecially important in multi-tenant environments. However, CPU limits can cause  \nthrottling even when the node has spare CPU capacity, potentially degrading  \nlatency-sensitive workload performance. Whether to set CPU limits depends on  \nyour environment, workload characteristics, and isolation requirements.For details on resource units, enforcement behavior, and configuration examples,  \nsee Resource Management for Pods and Containers.Static PodsStatic Pods are managed directly by the kubelet daemon on a specific node,  \nwithout the API server  \nobserving them.  \nWhereas most Pods are managed by the control plane (for example, a  \nDeployment), for static  \nPods, the kubelet directly supervises each static Pod (and restarts it if it fails).Static Pods are always bound to one Kubelet on a specific node.  \nThe main use for static Pods is to run a self-hosted control plane: in other words,  \nusing the kubelet to supervise the individual control plane components.The kubelet automatically tries to create a mirror Pod  \non the Kubernetes API server for each static Pod.  \nThis means that the Pods running on a node are visible on the API server,  \nbut cannot be controlled from there. See the guide Create static Pods  \nfor more information.Note:The spec of a static Pod cannot refer to other API objects  \n(e.g., ServiceAccount,  \nConfigMap,  \nSecret, etc).Pods with multiple containersPods are designed to support multiple cooperating processes (as containers) that form  \na cohesive unit of service. The containers in a Pod are automatically co-located and  \nco-scheduled on the same physical or virtual machine in the cluster. The containers  \ncan share resources and dependencies, communicate with one another, and coordinate  \nwhen and how they are terminated.Pods in a Kubernetes cluster are used in two main ways:Pods that run a single container. The \"one-container-per-Pod\" model is the  \nmost common Kubernetes use case; in this case, you can think of a Pod as a",
+        "For example, if pods are crash looping, and there are multiple rolling updates events triggered over time, you might end up with more ReplicaSets than the .spec.revisionHistoryLimit because the Deployment never reaches a complete state.Canary DeploymentIf you want to roll out releases to a subset of users or servers using the Deployment, you can create multiple Deployments, one for each release, following the canary pattern described in managing resources.Writing a Deployment SpecAs with all other Kubernetes configs, a Deployment needs .apiVersion, .kind, and .metadata fields. For general information about working with config files, see deploying applications, configuring containers, and using kubectl to manage resources documents.When the control plane creates new Pods for a Deployment, the .metadata.name of the Deployment is part of the basis for naming those Pods. The name of a Deployment must be a valid DNS subdomain value, but this can produce unexpected results for the Pod hostnames. For best compatibility, the name should follow the more restrictive rules for a DNS label.A Deployment also needs a .spec section.Pod TemplateThe .spec.template and .spec.selector are the only required fields of the .spec.The .spec.template is a Pod template. It has exactly the same schema as a Pod, except it is nested and does not have an apiVersion or kind.In addition to required fields for a Pod, a Pod template in a Deployment must specify appropriate labels and an appropriate restart policy. For labels, make sure not to overlap with other controllers. See selector.Only a .spec.template.spec.restartPolicy equal to Always is allowed, which is the default if not specified.Replicas.spec.replicas is an optional field that specifies the number of desired Pods.",
+        "Concepts \u203a Scheduling-Eviction \u203a Pod-Priority-Preemption\nNode is found, one or more lower priority Pods get evicted from the Node. After  \nthe Pods are gone, P can be scheduled on the Node.User exposed informationWhen Pod P preempts one or more Pods on Node N, nominatedNodeName field of Pod  \nP's status is set to the name of Node N. This field helps the scheduler track  \nresources reserved for Pod P and also gives users information about preemptions  \nin their clusters.Please note that Pod P is not necessarily scheduled to the \"nominated Node\".  \nThe scheduler always tries the \"nominated Node\" before iterating over any other nodes.  \nAfter victim Pods are preempted, they get their graceful termination period. If  \nanother node becomes available while scheduler is waiting for the victim Pods to  \nterminate, scheduler may use the other node to schedule Pod P. As a result  \nnominatedNodeName and nodeName of Pod spec are not always the same. Also, if  \nthe scheduler preempts Pods on Node N, but then a higher priority Pod than Pod P  \narrives, the scheduler may give Node N to the new higher priority Pod. In such a  \ncase, scheduler clears nominatedNodeName of Pod P. By doing this, scheduler  \nmakes Pod P eligible to preempt Pods on another Node.Limitations of preemptionGraceful termination of preemption victimsWhen Pods are preempted, the victims get their  \ngraceful termination period.  \nThey have that much time to finish their work and exit. If they don't, they are  \nkilled. This graceful termination period creates a time gap between the point  \nthat the scheduler preempts Pods and the time when the pending Pod (P) can be  \nscheduled on the Node (N). In the meantime, the scheduler keeps scheduling other  \npending Pods. As victims exit or get terminated, the scheduler tries to schedule  \nPods in the pending queue. Therefore, there is usually a time gap between the  \npoint that scheduler preempts victims and the time that Pod P is scheduled. In  \norder to minimize this gap, one can set graceful termination period of lower  \npriority Pods to zero or a small number.PodDisruptionBudget is supported, but not guaranteedA PodDisruptionBudget (PDB)  \nallows application owners to limit the number of Pods of a replicated application  \nthat are down simultaneously from voluntary disruptions. Kubernetes supports",
+        "It defaults to 1.Should you manually scale a Deployment, example via kubectl scale deployment deployment --replicas=X, and then you update that Deployment based on a manifest (for example: by running kubectl apply -f deployment.yaml), then applying that manifest overwrites the manual scaling that you previously did.If a HorizontalPodAutoscaler (or any similar API for horizontal scaling) is managing scaling for a Deployment, don't set .spec.replicas.Instead, allow the Kubernetes control plane to manage the .spec.replicas field automatically.Selector.spec.selector is a required field that specifies a label selector for the Pods targeted by this Deployment..spec.selector must match .spec.template.metadata.labels, or it will be rejected by the API.In API version apps/v1, .spec.selector and .metadata.labels do not default to .spec.template.metadata.labels if not set. So they must be set explicitly. Also note that .spec.selector is immutable after creation of the Deployment in apps/v1.A Deployment may terminate Pods whose labels match the selector if their template is different from .spec.template or if the total number of such Pods exceeds .spec.replicas. It brings up new Pods with .spec.template if the number of Pods is less than the desired number.Note:You should not create other Pods whose labels match this selector, either directly, by creating another Deployment, or by creating another controller such as a ReplicaSet or a ReplicationController. If you do so, the first Deployment thinks that it created these other Pods. Kubernetes does not stop you from doing this.If you have multiple controllers that have overlapping selectors, the controllers will fight with each other and won't behave correctly.Strategy.spec.strategy specifies the strategy used to replace old Pods by new ones. .spec.strategy.type can be \"Recreate\" or \"RollingUpdate\". \"RollingUpdate\" is the default value.Recreate DeploymentAll existing Pods are killed before new ones are created when .spec.strategy.type==Recreate.Note:This will only guarantee Pod termination previous to creation for upgrades. If you upgrade a Deployment, all Pods of the old revision will be terminated immediately. Successful removal is awaited before any Pod of the new revision is created."
+      ],
+      "context_sources": [
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__workloads__pods.html",
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__scheduling-eviction__pod-priority-preemption.html",
+        "concepts__workloads__controllers__deployment.txt"
+      ],
+      "context_source_names": [
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__workloads__pods.html",
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__scheduling-eviction__pod-priority-preemption.html",
+        "concepts__workloads__controllers__deployment.txt"
+      ],
+      "latency_ms": 95647.1,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 0.0,
+        "matched": []
+      },
+      "tokens_used": 6892,
+      "confidence": 1.0,
+      "crag_action": null,
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [
+        "Define a Deployment for your application and set the `replicas` field to the desired number of pod instances. The Deployment controller will automatically create ReplicaSets that maintain the specified replica count, recreating pods on healthy nodes if a server fails.",
+        "Use a `PodDisruptionBudget` to specify the minimum number of pods that must remain available during voluntary disruptions, ensuring that the scheduler does not evict too many pods at once when a node is drained.",
+        "Configure a `livenessProbe` and `readinessProbe` for each container so that the kubelet can detect unhealthy pods and the Deployment can replace them, while the Service continues routing traffic only to ready pods."
+      ],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 1.0,
+      "unsupported_claims": [],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0004
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 0.3,
+        "answer_relevancy": 0.7624,
+        "context_precision": 0.0,
+        "context_recall": 0.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    },
+    {
+      "id": "q-016",
+      "question": "What stops a misbehaving tenant from using all the CPU on a shared computer?",
+      "intent": "rag",
+      "demonstrates_feature": "hyde",
+      "golden_sources": [
+        "concepts__policy__resource-quotas.txt",
+        "concepts__policy__limit-range.html"
+      ],
+      "golden_answer_keywords": [
+        "quota",
+        "limit",
+        "resource"
+      ],
+      "answer": "A\u202fLimitRange (or a ResourceQuota that requires limits) can be used to cap the amount of CPU any single Pod (and therefore any tenant) may request.  \nWhen a container reaches its declared CPU\u202flimit the kubelet throttles the container, preventing it from consuming more CPU than allowed\u202f[1].  \nIf a namespace has a LimitRange that defines a maximum CPU limit (or a ResourceQuota that forces every Pod to set a limit), a Pod that tries to request more than that maximum will be rejected at admission\u202f[2][3][5].  \nThus, by configuring appropriate CPU\u202flimits in a LimitRange (or enforcing limits via a ResourceQuota), a misbehaving tenant is prevented from using all the CPU on a shared node.",
+      "sources": [
+        "concepts__workloads__pods.html",
+        "concepts__policy__limit-range.html",
+        "concepts__policy__resource-quotas.txt"
+      ],
+      "contexts": [
+        "Concepts \u203a Workloads \u203a Pods\nresource than the limit you set.CPU limits are enforced by CPU throttling. When a container approaches its  \nCPU limit, the kernel restricts its access to CPU. Memory limits are enforced  \nby the kernel with out-of-memory (OOM) kills when a container exceeds its limit.Note:Setting CPU limits involves a trade-off. CPU limits help prevent noisy neighbor  \nproblems where a single workload starves others on the same node. This is  \nespecially important in multi-tenant environments. However, CPU limits can cause  \nthrottling even when the node has spare CPU capacity, potentially degrading  \nlatency-sensitive workload performance. Whether to set CPU limits depends on  \nyour environment, workload characteristics, and isolation requirements.For details on resource units, enforcement behavior, and configuration examples,  \nsee Resource Management for Pods and Containers.Static PodsStatic Pods are managed directly by the kubelet daemon on a specific node,  \nwithout the API server  \nobserving them.  \nWhereas most Pods are managed by the control plane (for example, a  \nDeployment), for static  \nPods, the kubelet directly supervises each static Pod (and restarts it if it fails).Static Pods are always bound to one Kubelet on a specific node.  \nThe main use for static Pods is to run a self-hosted control plane: in other words,  \nusing the kubelet to supervise the individual control plane components.The kubelet automatically tries to create a mirror Pod  \non the Kubernetes API server for each static Pod.  \nThis means that the Pods running on a node are visible on the API server,  \nbut cannot be controlled from there. See the guide Create static Pods  \nfor more information.Note:The spec of a static Pod cannot refer to other API objects  \n(e.g., ServiceAccount,  \nConfigMap,  \nSecret, etc).Pods with multiple containersPods are designed to support multiple cooperating processes (as containers) that form  \na cohesive unit of service. The containers in a Pod are automatically co-located and  \nco-scheduled on the same physical or virtual machine in the cluster. The containers  \ncan share resources and dependencies, communicate with one another, and coordinate  \nwhen and how they are terminated.Pods in a Kubernetes cluster are used in two main ways:Pods that run a single container. The \"one-container-per-Pod\" model is the  \nmost common Kubernetes use case; in this case, you can think of a Pod as a",
+        "Concepts \u203a Policy \u203a Limit-Range\nthen that Pod will not be scheduled, failing with an error similar to:Pod \"example-conflict-with-limitrange-cpu\" is invalid: spec.containers[0].resources.requests: Invalid value: \"700m\": must be less than or equal to cpu limit  \nIf you set both request and limit, then that new Pod will be scheduled successfully  \neven with the same LimitRange in place:concepts/policy/limit-range/example-no-conflict-with-limitrange-cpu.yaml  \napiVersion: v1  \nkind: Pod  \nmetadata:  \nname: example-no-conflict-with-limitrange-cpu  \nspec:  \ncontainers:  \n- name: demo  \nimage: registry.k8s.io/pause:3.8  \nresources:  \nrequests:  \ncpu: 700m  \nlimits:  \ncpu: 700m  \nExample resource constraintsExamples of policies that could be created using LimitRange are:In a 2 node cluster with a capacity of 8 GiB RAM and 16 cores, constrain Pods in a  \nnamespace to request 100m of CPU with a max limit of 500m for CPU and request 200Mi  \nfor Memory with a max limit of 600Mi for Memory.Define default CPU limit and request to 150m and memory default request to 300Mi for  \nContainers started with no cpu and memory requests in their specs.In the case where the total limits of the namespace is less than the sum of the limits  \nof the Pods/Containers, there may be contention for resources. In this case, the  \nContainers or Pods will not be created.Neither contention nor changes to a LimitRange will affect already created resources.What's nextFor examples on using limits, see:how to configure minimum and maximum CPU constraints per namespace.how to configure minimum and maximum Memory constraints per namespace.how to configure default CPU Requests and Limits per namespace.how to configure default Memory Requests and Limits per namespace.how to configure minimum and maximum Storage consumption per namespace.a detailed example on configuring quota per namespace.Refer to the LimitRanger design document  \nfor context and historical information.FeedbackWas this page helpful?Yes  \nNoThanks for the feedback. If you have a specific, answerable question about how to use Kubernetes, ask it on  \nStack Overflow.  \nOpen an issue in the GitHub Repository if you want to  \nreport a problem",
+        "Concepts \u203a Policy \u203a Limit-Range\nLimit Ranges | Kubernetes  \nLimit RangesBy default, containers run with unbounded  \ncompute resources on a Kubernetes cluster.  \nUsing Kubernetes resource quotas,  \nadministrators (also termed cluster operators) can restrict consumption and creation  \nof cluster resources (such as CPU time, memory, and persistent storage) within a specified  \nnamespace.  \nWithin a namespace, a Pod can consume as much CPU and memory as is allowed by the ResourceQuotas that apply to that namespace.  \nAs a cluster operator, or as a namespace-level administrator, you might also be concerned  \nabout making sure that a single object cannot monopolize all available resources within a namespace.A LimitRange is a policy to constrain the resource allocations (limits and requests) that you can specify for  \neach applicable object kind (such as Pod or PersistentVolumeClaim) in a namespace.A LimitRange provides constraints that can:Enforce minimum and maximum compute resources usage per Pod or Container in a namespace.Enforce minimum and maximum storage request per  \nPersistentVolumeClaim in a namespace.Enforce a ratio between request and limit for a resource in a namespace.Set default request/limit for compute resources in a namespace and automatically  \ninject them to Containers at runtime.Kubernetes constrains resource allocations to Pods in a particular namespace  \nwhenever there is at least one LimitRange object in that namespace.The name of a LimitRange object must be a valid  \nDNS subdomain name.Constraints on resource limits and requestsThe administrator creates a LimitRange in a namespace.Users create (or try to create) objects in that namespace, such as Pods or  \nPersistentVolumeClaims.First, the LimitRange admission controller applies default request and limit values  \nfor all Pods (and their containers) that do not set compute resource requirements.Second, the LimitRange tracks usage to ensure it does not exceed resource minimum,  \nmaximum and ratio defined in any LimitRange present in the namespace.If you attempt to create or update an object (Pod or PersistentVolumeClaim) that violates  \na LimitRange constraint, your request to the API server will fail with an HTTP status  \ncode 403 Forbidden and a message explaining the constraint that has been violated.If you add a LimitRange in a namespace that applies to compute-related resources",
+        "In that case you can check the status of the Deployment, for example with kubectl describe, to see what has happened.For cpu and memory resources, ResourceQuotas enforce that every (new) pod in that namespace sets a limit for that resource. If you enforce a resource quota in a namespace for either cpu or memory, you and other clients, must specify either requests or limits for that resource, for every new Pod you submit. If you don't, the control plane may reject admission for that Pod.For other resources: ResourceQuota works and will ignore pods in the namespace without setting a limit or request for that resource. It means that you can create a new pod without limit/request for ephemeral storage if the resource quota limits the ephemeral storage of this namespace.You can use a LimitRange to automatically set a default request for these resources.The name of a ResourceQuota object must be a valid DNS subdomain name.Examples of policies that could be created using namespaces and quotas are:In a cluster with a capacity of 32 GiB RAM, and 16 cores, let team A use 20 GiB and 10 cores, let B use 10GiB and 4 cores, and hold 2GiB and 2 cores in reserve for future allocation.Limit the \"testing\" namespace to using 1 core and 1GiB RAM. Let the \"production\" namespace use any amount.In the case where the total capacity of the cluster is less than the sum of the quotas of the namespaces, there may be contention for resources. This is handled on a first-come-first-served basis.Enabling Resource QuotaResourceQuota support is enabled by default for many Kubernetes distributions. It is enabled when the API server --enable-admission-plugins= flag has ResourceQuota as one of its arguments.A resource quota is enforced in a particular namespace when there is a ResourceQuota in that namespace.Types of resource quotaThe ResourceQuota mechanism lets you enforce different kinds of limits.",
+        "Concepts \u203a Policy \u203a Limit-Range\nsuch as cpu and memory, you must specify requests or limits for those values.  \nOtherwise, the system may reject Pod creation.LimitRange validations occur only at Pod admission stage, not on running Pods.  \nIf you add or modify a LimitRange, the Pods that already exist in that namespace  \ncontinue unchanged.If two or more LimitRange objects exist in the namespace, it is not deterministic  \nwhich default value will be applied.LimitRange and admission checks for PodsA LimitRange does not check the consistency of the default values it applies.  \nThis means that a default value for the limit that is set by LimitRange may be  \nless than the request value specified for the container in the spec that a client  \nsubmits to the API server. If that happens, the final Pod will not be schedulable.For example, you define a LimitRange with below manifest:Note:The following examples operate within the default namespace of your cluster, as the namespace  \nparameter is undefined and the LimitRange scope is limited to the namespace level.  \nThis implies that any references or operations within these examples will interact  \nwith elements within the default namespace of your cluster. You can override the  \noperating namespace by configuring namespace in the metadata.namespace field.concepts/policy/limit-range/problematic-limit-range.yaml  \napiVersion: v1  \nkind: LimitRange  \nmetadata:  \nname: cpu-resource-constraint  \nspec:  \nlimits:  \n- default: # this section defines default limits  \ncpu: 500m  \ndefaultRequest: # this section defines default requests  \ncpu: 500m  \nmax: # max and min define the limit range  \ncpu: \"1\"  \nmin:  \ncpu: 100m  \ntype: Container  \nalong with a Pod that declares a CPU resource request of 700m, but not a limit:concepts/policy/limit-range/example-conflict-with-limitrange-cpu.yaml  \napiVersion: v1  \nkind: Pod  \nmetadata:  \nname: example-conflict-with-limitrange-cpu  \nspec:  \ncontainers:  \n- name: demo  \nimage: registry.k8s.io/pause:3.8  \nresources:  \nrequests:  \ncpu: 700m"
+      ],
+      "context_sources": [
+        "concepts__workloads__pods.html",
+        "concepts__policy__limit-range.html",
+        "concepts__policy__limit-range.html",
+        "concepts__policy__resource-quotas.txt",
+        "concepts__policy__limit-range.html"
+      ],
+      "context_source_names": [
+        "concepts__workloads__pods.html",
+        "concepts__policy__limit-range.html",
+        "concepts__policy__limit-range.html",
+        "concepts__policy__resource-quotas.txt",
+        "concepts__policy__limit-range.html"
+      ],
+      "latency_ms": 95635.4,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "concepts__policy__resource-quotas.txt",
+          "concepts__policy__limit-range.html"
+        ]
+      },
+      "tokens_used": 7104,
+      "confidence": 1.0,
+      "crag_action": null,
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [
+        "Kubernetes enforces CPU limits through the `resources.limits.cpu` field in a PodSpec. When a container exceeds its limit, the kubelet throttles the cgroup, preventing the tenant from consuming more CPU than allocated.",
+        "If a tenant's workload does not specify a CPU limit, the default `LimitRange` or `ResourceQuota` objects can impose a ceiling. The scheduler will reject pods that would exceed the quota, ensuring fair sharing across the node.",
+        "Cluster administrators can enable the `CPUManager` policy and configure `system-reserved` and `kube-reserved` resources. These settings reserve a portion of the node's CPU for system daemons, guaranteeing that tenant pods cannot starve the host."
+      ],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 1.0,
+      "unsupported_claims": [],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0004
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 0.5455,
+        "answer_relevancy": 0.8696,
+        "context_precision": 0.6792,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    },
+    {
+      "id": "q-038",
+      "question": "How do I make my application handle more traffic automatically?",
+      "intent": "rag",
+      "demonstrates_feature": "hyde",
+      "golden_sources": [
+        "concepts__workloads__controllers__deployment.txt",
+        "tutorials__kubernetes-basics__scale__scale-intro.html"
+      ],
+      "golden_answer_keywords": [
+        "autoscal",
+        "HorizontalPodAutoscaler",
+        "replicas"
+      ],
+      "answer": "To have your application scale automatically with traffic, set up a Horizontal\u202fPod\u202fAutoscaler (HPA) for the Deployment that runs your app.\n\n1. **Create an autoscaler for the Deployment** \u2013 use the `kubectl autoscale` command and specify the minimum and maximum number of Pods you want, as well as the CPU\u2011utilization target that should trigger scaling. For example:  \n\n   ```bash\n   kubectl autoscale deployment/nginx-deployment --min=10 --max=15 --cpu-percent=80%\n   ```\n\n   This creates an HPA that will increase the number of Pods up to the `max` value when the average CPU usage of the Pods reaches the specified percentage, and will shrink the replica count down to the `min` value when load drops. The command returns a message like `deployment.apps/nginx-deployment scaled`\u202f[1].\n\n2. **Ensure the Deployment does not have a fixed `.spec.replicas`** \u2013 when an HPA manages scaling, you should not set `.spec.replicas` manually; let the control plane update it automatically\u202f[2].\n\nWith the HPA in place, the cluster will automatically adjust the number of Pods for your application based on the observed CPU utilization, allowing it to handle higher traffic without manual intervention.",
+      "sources": [
+        "concepts__workloads__controllers__deployment.txt",
+        "tutorials__kubernetes-basics__scale__scale-intro.html",
+        "concepts__services-networking__service.txt"
+      ],
+      "contexts": [
+        "deployment-controller  Scaled down replica set nginx-deployment-595696685f to 0 Scaling a DeploymentYou can scale a Deployment by using the following command:kubectl scale deployment/nginx-deployment --replicas=10 The output is similar to this:deployment.apps/nginx-deployment scaled Assuming horizontal Pod autoscaling is enabled in your cluster, you can set up an autoscaler for your Deployment and choose the minimum and maximum number of Pods you want to run based on the CPU utilization of your existing Pods.kubectl autoscale deployment/nginx-deployment --min=10 --max=15 --cpu-percent=80% The output is similar to this:deployment.apps/nginx-deployment scaled Proportional scalingRollingUpdate Deployments support running multiple versions of an application at the same time. When you or an autoscaler scales a RollingUpdate Deployment that is in the middle of a rollout (either in progress or paused), the Deployment controller balances the additional replicas in the existing active ReplicaSets (ReplicaSets with Pods) in order to mitigate risk. This is called proportional scaling.For example, you are running a Deployment with 10 replicas, maxSurge=3, and maxUnavailable=2.Ensure that the 10 replicas in your Deployment are running.kubectl get deploy The output is similar to this:NAME\nDESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE nginx-deployment     10        10        10           10          50s You update to a new image which happens to be unresolvable from inside the cluster.kubectl set image deployment/nginx-deployment nginx=nginx:sometag The output is similar to this:deployment.apps/nginx-deployment image updated The image update starts a new rollout with ReplicaSet nginx-deployment-1989198191, but it's blocked due to the maxUnavailable requirement that you mentioned above. Check out the rollout status:kubectl get rs The output is similar to this:NAME",
+        "It defaults to 1.Should you manually scale a Deployment, example via kubectl scale deployment deployment --replicas=X, and then you update that Deployment based on a manifest (for example: by running kubectl apply -f deployment.yaml), then applying that manifest overwrites the manual scaling that you previously did.If a HorizontalPodAutoscaler (or any similar API for horizontal scaling) is managing scaling for a Deployment, don't set .spec.replicas.Instead, allow the Kubernetes control plane to manage the .spec.replicas field automatically.Selector.spec.selector is a required field that specifies a label selector for the Pods targeted by this Deployment..spec.selector must match .spec.template.metadata.labels, or it will be rejected by the API.In API version apps/v1, .spec.selector and .metadata.labels do not default to .spec.template.metadata.labels if not set. So they must be set explicitly. Also note that .spec.selector is immutable after creation of the Deployment in apps/v1.A Deployment may terminate Pods whose labels match the selector if their template is different from .spec.template or if the total number of such Pods exceeds .spec.replicas. It brings up new Pods with .spec.template if the number of Pods is less than the desired number.Note:You should not create other Pods whose labels match this selector, either directly, by creating another Deployment, or by creating another controller such as a ReplicaSet or a ReplicationController. If you do so, the first Deployment thinks that it created these other Pods. Kubernetes does not stop you from doing this.If you have multiple controllers that have overlapping selectors, the controllers will fight with each other and won't behave correctly.Strategy.spec.strategy specifies the strategy used to replace old Pods by new ones. .spec.strategy.type can be \"Recreate\" or \"RollingUpdate\". \"RollingUpdate\" is the default value.Recreate DeploymentAll existing Pods are killed before new ones are created when .spec.strategy.type==Recreate.Note:This will only guarantee Pod termination previous to creation for upgrades. If you upgrade a Deployment, all Pods of the old revision will be terminated immediately. Successful removal is awaited before any Pod of the new revision is created.",
+        "Tutorials \u203a Kubernetes-Basics \u203a Scale \u203a Scale-Intro\nRunning Multiple Instances of Your App | Kubernetes  \nRunning Multiple Instances of Your AppObjectivesScale an existing app manually using kubectl.Before you beginThe shell commands in this tutorial use POSIX shell syntax, which is supported by  \nthe default shells on most Linux and macOS systems (for example, bash, zsh, or sh).  \nWindows users must use a POSIX-compatible shell such as  \nWindows Subsystem for Linux (WSL)  \nor Git Bash to run the commands as written.  \nCommands that use export, $(), and similar constructs are not compatible  \nwith PowerShell or the Windows Command Prompt.Scaling an applicationYou can create from the start a Deployment with multiple instances using the --replicas  \nparameter for the kubectl create deployment command.Previously we created a Deployment,  \nand then exposed it publicly via a Service.  \nThe Deployment created only one Pod for running our application. When traffic increases,  \nwe will need to scale the application to keep up with user demand.If you haven't worked through the earlier sections, start from  \nUsing minikube to create a cluster.Scaling is accomplished by changing the number of replicas in a Deployment.Note:If you are trying this after the  \nprevious section, then you  \nmay have deleted the service you created, or have created a Service of type: NodePort.  \nIn this section, it is assumed that a service with type: LoadBalancer is created  \nfor the kubernetes-bootcamp Deployment.If you have not deleted the Service created in  \nthe previous section,  \nfirst delete that Service and then run the following command to create a new Service  \nwith its type set to LoadBalancer:kubectl expose deployment/kubernetes-bootcamp --type=\"LoadBalancer\" --port 8080  \nScaling overviewScaling is accomplished by changing the number of replicas in a Deployment.Scaling out a Deployment will ensure new Pods are created and scheduled to Nodes  \nwith available resources. Scaling will increase the number of Pods to the new desired  \nstate. Kubernetes also supports autoscaling  \nof Pods, but it is outside of the scope of this tutorial. Scaling to zero is also  \npossible, and it will terminate all Pods of the specified Deployment.Running multiple instances of an application will require a way to distribute the  \ntraffic to all of them. Services have an integrated load-balancer that will distribute",
+        "Tutorials \u203a Kubernetes-Basics \u203a Scale \u203a Scale-Intro\nnetwork traffic to all Pods of an exposed Deployment. Services will monitor continuously  \nthe running Pods using endpoints, to ensure the traffic is sent only to available Pods.Once you have multiple instances of an application running, you would be able to  \ndo Rolling updates without downtime. We'll cover that in the next section of the  \ntutorial. Now, let's go to the terminal and scale our application.Scaling a DeploymentTo list your Deployments, use the get deployments subcommand:kubectl get deployments  \nThe output should be similar to:NAME READY UP-TO-DATE AVAILABLE AGE  \nkubernetes-bootcamp 1/1 1 1 11m  \nWe should have 1 Pod. If not, run the command again. This shows:NAME lists the names of the Deployments in the cluster.READY shows the ratio of CURRENT/DESIRED replicasUP-TO-DATE displays the number of replicas that have been updated to achieve the desired state.AVAILABLE displays how many replicas of the application are available to your users.AGE displays the amount of time that the application has been running.To see the ReplicaSet created by the Deployment, run:kubectl get rs  \nNotice that the name of the ReplicaSet is always formatted as  \n[DEPLOYMENT-NAME]-[RANDOM-STRING].  \nThe random string is randomly generated and uses the pod-template-hash as a seed.Two important columns of this output are:DESIRED displays the desired number of replicas of the application, which you  \ndefine when you create the Deployment. This is the desired state.CURRENT displays how many replicas are currently running.Next, let's scale the Deployment to 4 replicas. We'll use the kubectl scale command,  \nfollowed by the Deployment type, name and desired number of instances:kubectl scale deployments/kubernetes-bootcamp --replicas=4  \nTo list your Deployments once again, use get deployments:kubectl get deployments  \nThe change was applied, and we have 4 instances of the application available. Next,  \nlet's check if the number of Pods changed:kubectl get pods -o wide  \nThere are 4 Pods now, with different IP addresses. The change was registered in  \nthe Deployment events log. To check that, use the describe subcommand:kubectl describe deployments/kubernetes-bootcamp",
+        "- ip: 192.0.2.127 Traffic from the external load balancer is directed at the backend Pods. The cloud provider decides how it is load balanced.To implement a Service of type: LoadBalancer, Kubernetes typically starts off by making the changes that are equivalent to you requesting a Service of type: NodePort. The cloud-controller-manager component then configures the external load balancer to forward traffic to that assigned node port.You can configure a load balanced Service to omit assigning a node port, provided that the cloud provider implementation supports this.Some cloud providers allow you to specify the loadBalancerIP. In those cases, the load-balancer is created with the user-specified loadBalancerIP. If the loadBalancerIP field is not specified, the load balancer is set up with an ephemeral IP address. If you specify a loadBalancerIP but your cloud provider does not support the feature, the loadbalancerIP field that you set is ignored.Note:The.spec.loadBalancerIP field for a Service was deprecated in Kubernetes v1.24.This field was under-specified and its meaning varies across implementations. It also cannot support dual-stack networking. This field may be removed in a future API version.If you're integrating with a provider that supports specifying the load balancer IP address(es) for a Service via a (provider specific) annotation, you should switch to doing that.If you are writing code for a load balancer integration with Kubernetes, avoid using this field. You can integrate with Gateway rather than Service, or you can define your own (provider specific) annotations on the Service that specify the equivalent detail.Node liveness impact on load balancer trafficLoad balancer health checks are critical to modern applications. They are used to determine which server (virtual machine, or IP address) the load balancer should dispatch traffic to. The Kubernetes APIs do not define how health checks have to be implemented for Kubernetes managed load balancers, instead it's the cloud providers (and the people implementing integration code) who decide on the behavior."
+      ],
+      "context_sources": [
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__workloads__controllers__deployment.txt",
+        "tutorials__kubernetes-basics__scale__scale-intro.html",
+        "tutorials__kubernetes-basics__scale__scale-intro.html",
+        "concepts__services-networking__service.txt"
+      ],
+      "context_source_names": [
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__workloads__controllers__deployment.txt",
+        "tutorials__kubernetes-basics__scale__scale-intro.html",
+        "tutorials__kubernetes-basics__scale__scale-intro.html",
+        "concepts__services-networking__service.txt"
+      ],
+      "latency_ms": 96161.5,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "concepts__workloads__controllers__deployment.txt",
+          "tutorials__kubernetes-basics__scale__scale-intro.html"
+        ]
+      },
+      "tokens_used": 7511,
+      "confidence": 1.0,
+      "crag_action": null,
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [
+        "To automatically handle increased traffic, expose your pods behind a Service of type LoadBalancer or NodePort and configure a HorizontalPodAutoscaler (HPA) that scales the Deployment based on CPU or custom metrics. Use `kubectl autoscale deployment <name> --cpu-percent=80 --min=2 --max=10` to create the HPA, and ensure the Metrics Server is installed to provide utilization data.",
+        "If you need fine\u2011grained scaling, define a CustomMetrics API and reference it in the HPA spec, e.g., `spec.metrics: [{type: External, external: {metricName: request_rate, targetAverageValue: 1000}}]`. Then apply the HPA with `kubectl apply -f hpa.yaml` and verify scaling events with `kubectl get hpa`.",
+        "For bursty traffic, consider using a Service with an external load balancer that supports session affinity and configure a Deployment with a `replicas` field set to a baseline value. Combine this with a Cluster Autoscaler so that new nodes are provisioned when the HPA creates more pods than existing nodes can schedule."
+      ],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 1.0,
+      "unsupported_claims": [],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0004
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.8159,
+        "context_precision": 1.0,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    }
+  ],
+  "skipped": [],
+  "errors": [],
+  "aggregate": {
+    "n_evaluated": 5,
+    "n_skipped": 0,
+    "n_errors": 0,
+    "faithfulness": 0.573,
+    "context_precision": 0.536,
+    "context_recall": 0.6,
+    "answer_relevancy": 0.843,
+    "source_overlap": 0.6,
+    "forbidden_violations": 0,
+    "latency_ms": 95529.18,
+    "intent_accuracy": 1.0,
+    "sql_keyword_match_rate": null,
+    "answer_cache_hit_rate": 0.0,
+    "sql_result_cache_hit_rate": null,
+    "block_rate": null,
+    "false_block_rate": 0.0,
+    "grounding_score": 0.967,
+    "grounding_warned": 0,
+    "grounding_replaced": 0,
+    "cost_saved_usd": 0.0
+  }
+}

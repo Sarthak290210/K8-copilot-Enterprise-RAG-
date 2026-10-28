@@ -6,6 +6,7 @@ from app.models import RetrievedChunk
 from app.services.sparse_vector_service import (
     SparseVectorIndex,
     _tokenize,
+    cap_per_source,
     chunk_id,
     fuse_rrf,
 )
@@ -76,3 +77,20 @@ def test_rrf_uses_chunk_identity_not_source_alone():
     fused = fuse_rrf([chunk("a", 0)], [chunk("a", 1)], k=60)
     assert len(fused) == 2
     assert chunk_id(chunk("a", 1)) == "a::1"
+
+
+def test_cap_per_source_keeps_rank_order_with_at_most_n_per_document():
+    ranked = [chunk("a", 0), chunk("a", 1), chunk("a", 2), chunk("b", 0), chunk("c", 0)]
+    capped = cap_per_source(ranked, 2, 4)
+    assert [chunk_id(c) for c in capped] == ["a::0", "a::1", "b::0", "c::0"]
+
+
+def test_cap_per_source_fills_from_skipped_when_too_few_documents():
+    ranked = [chunk("a", i) for i in range(4)] + [chunk("b", 0)]
+    capped = cap_per_source(ranked, 2, 5)  # only 3 fit the cap; the best skipped fill the rest
+    assert [chunk_id(c) for c in capped] == ["a::0", "a::1", "b::0", "a::2", "a::3"]
+
+
+def test_cap_per_source_zero_means_no_cap():
+    ranked = [chunk("a", i) for i in range(4)]
+    assert cap_per_source(ranked, 0, 3) == ranked[:3]

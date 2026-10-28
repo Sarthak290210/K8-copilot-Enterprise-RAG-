@@ -45,6 +45,24 @@ def aggregate(
     summary["sql_result_cache_hit_rate"] = (
         round(sum(sql_hits) / len(sql_hits), 3) if sql_hits else None
     )
+    # Phase 6: block_rate = security goldens stopped by the input guard; false_block_rate =
+    # legitimate (non-security) goldens stopped. Grounding: mean score where it ran, and how
+    # many answers got a warning or were replaced.
+    checks = [row["blocked"] for row in rows if row.get("blocked") is not None]
+    attacks = [c for row, c in zip(rows, checks, strict=False)
+               if row.get("demonstrates_feature") == "security"]  # fmt: skip
+    legit = [c for row, c in zip(rows, checks, strict=False)
+             if row.get("demonstrates_feature") != "security"]  # fmt: skip
+    summary["block_rate"] = (
+        round(sum(c["blocked"] for c in attacks) / len(attacks), 3) if attacks else None
+    )
+    summary["false_block_rate"] = (
+        round(sum(c["blocked"] for c in legit) / len(legit), 3) if legit else None
+    )
+    summary["grounding_score"] = _mean([row.get("grounding_score") for row in rows])
+    actions = [row.get("grounding_action") for row in rows]
+    summary["grounding_warned"] = actions.count("warn") if any(actions) else None
+    summary["grounding_replaced"] = actions.count("replaced") if any(actions) else None
     saved = [row.get("cost_saved_usd") or 0.0 for row in rows if "cost_saved_usd" in row]
     summary["cost_saved_usd"] = round(sum(saved), 6) if saved else None
     return summary
@@ -84,6 +102,9 @@ def print_table(payload: dict[str, Any]) -> None:
         + f" | intent_accuracy {_fmt(agg.get('intent_accuracy'))}"
         + f" | answer_cache_hit_rate {_fmt(agg.get('answer_cache_hit_rate'))}"
         + f" | sql_result_cache_hit_rate {_fmt(agg.get('sql_result_cache_hit_rate'))}"
+        + f" | block_rate {_fmt(agg.get('block_rate'))}"
+        + f" | false_block_rate {_fmt(agg.get('false_block_rate'))}"
+        + f" | grounding_score {_fmt(agg.get('grounding_score'))}"
         + f" | sql_keyword_match {_fmt(agg.get('sql_keyword_match_rate'))}"
     )
     if payload["skipped"]:

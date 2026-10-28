@@ -1,0 +1,579 @@
+{
+  "notes": {
+    "run": "naive RAG v2: dense search only (top 5), no CRAG, on golden questions q-001..q-005, after the 2026-10-28 fixes (6 PDFs re-indexed, answer prompt forbids the model's own knowledge). The eval judge sees each chunk's source, so faithfulness isn't directly comparable with E1 (naive v1).",
+    "result": "4 of 5 pass (q-001, q-002, q-004, q-005). q-003 fails: retrieval miss.",
+    "failed": {
+      "q-003": {
+        "question": "A container in my pod keeps crashing and restarting. How do I see what went wrong?",
+        "expected_documents": [
+          "concepts__cluster-administration__logging.pdf",
+          "reference__kubectl__cheatsheet.txt"
+        ],
+        "retrieved_instead": "4 chunks of reference__kubernetes-api__workload-resources__pod-v1.docx (the Pod API reference) + concepts__workloads__pods.html",
+        "why_it_failed": "Dense (embedding) search alone matched the user's everyday words ('container keeps crashing and restarting') to the Pod API reference, which talks about container status fields. The chunk with the real fix, `kubectl logs --previous` in logging.pdf, ranked 38th in dense search and 51st in BM25 keyword search, far outside the top 5. So precision and recall were 0: the answer (faithfulness 0.83) was faithful to what it got (status fields, exit codes) but could not give the logs command the question needs.",
+        "how_we_fixed_it": "Switched this question to hybrid + HyDE: the LLM first writes 3 short hypothetical documentation-style answers (they mention kubectl logs, --previous, restarts), the vector search runs on the question and on each passage, and BM25 searches the question + passages; the results are merged with RRF. The passages use the documentation's vocabulary, which closes the gap between how the user asks and how the docs are written. The passages are used only for searching; the answer model sees only the retrieved documents.",
+        "result_after_fix": "PASS in q3_hybrid+hyde.json: precision 0 -> 1.0 and recall 0 -> 1.0 (both expected documents retrieved: logging.pdf x3 + kubectl cheatsheet), the answer gives `kubectl logs <pod> --previous`, faithfulness 0.75 (pass >= 0.7), relevancy 0.70.",
+        "fixed_in": "q3_hybrid+hyde.json"
+      }
+    }
+  },
+  "profile": "naive",
+  "flags": {
+    "search_mode": "dense",
+    "top_k": 5,
+    "enable_rerank": false,
+    "enable_hyde": false,
+    "enable_crag": false,
+    "enable_self_reflective": false
+  },
+  "timestamp": "20261027T220316Z",
+  "git_commit": "28575b7",
+  "questions_file": "goldens_first5.yaml",
+  "filter": null,
+  "judge_model": "qwen-3.8-27b",
+  "judge_context": "source+text",
+  "answer_relevancy_strictness": 1,
+  "answer_model": "gpt-oss-120b",
+  "pipeline": {
+    "grader_model": "gpt-oss-120b",
+    "reasoning_effort": "low",
+    "rrf_k": 60,
+    "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    "reranker_max_length": 256,
+    "reranker_initial_top_k": 20,
+    "hyde_num_hypotheses": 3,
+    "hyde_sparse_query": "question+passages",
+    "crag_relevance_threshold": 0.7,
+    "crag_ambiguous_threshold": 0.5,
+    "reflection_min_score": 0.8,
+    "max_reflection_retries": 2,
+    "grounding_enabled": true,
+    "grounding_pass_score": 0.8,
+    "grounding_warn_score": 0.5,
+    "security_models_enabled": true,
+    "prompt_injection_threshold": 0.9,
+    "toxicity_threshold": 0.75,
+    "output_toxicity_threshold": 0.5
+  },
+  "invoker": "agent",
+  "cache": {
+    "enabled": false,
+    "cleared_before_run": false,
+    "stats": {
+      "enabled": false,
+      "backend": "redis+memory",
+      "memory_entries": 0,
+      "tiers": {
+        "intent": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "embedding": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "rag_answer": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "sql_gen": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "sql_result": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        }
+      }
+    }
+  },
+  "rows": [
+    {
+      "id": "q-001",
+      "question": "What is a Pod in Kubernetes?",
+      "intent": "rag",
+      "demonstrates_feature": "baseline",
+      "golden_sources": [
+        "concepts__workloads__pods.html"
+      ],
+      "golden_answer_keywords": [
+        "pod",
+        "container",
+        "namespace"
+      ],
+      "answer": "A Pod is the smallest deployable unit in Kubernetes. It is a logical host that groups one or more containers together, providing them with shared storage and network resources and a specification for how to run the containers. The containers in a Pod share Linux namespaces, cgroups, and other isolation facets, and are always co‑located and co‑scheduled on the same node. Pods can contain regular application containers, init containers that run during startup, and (for debugging) ephemeral containers. In the common “one‑container‑per‑Pod” model, a Pod acts as a wrapper around a single container, while in more advanced cases it can encapsulate multiple tightly‑coupled containers that need to share resources[1].",
+      "sources": [
+        "concepts__workloads__pods.html",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "concepts__services-networking__service.txt",
+        "concepts__overview__what-is-kubernetes.docx"
+      ],
+      "contexts": [
+        "Concepts › Workloads › Pods\nPods | Kubernetes  \nPodsPods are the smallest deployable units of computing that you can create and manage in Kubernetes.A Pod (as in a pod of whales or pea pod) is a group of one or more  \ncontainers, with shared storage and network resources, and a specification for how to run the containers. A Pod's contents are always co-located and  \nco-scheduled, and run in a shared context. A Pod models an  \napplication-specific \"logical host\": it contains one or more application  \ncontainers which are relatively tightly coupled.  \nIn non-cloud contexts, applications executed on the same physical or virtual machine are analogous to cloud applications executed on the same logical host.As well as application containers, a Pod can contain  \ninit containers that run  \nduring Pod startup. You can also inject  \nephemeral containers  \nfor debugging a running Pod.What is a Pod?Note:You need to install a container runtime  \ninto each node in the cluster so that Pods can run there.The shared context of a Pod is a set of Linux namespaces, cgroups, and  \npotentially other facets of isolation - the same things that isolate a container. Within a Pod's context, the individual applications may have  \nfurther sub-isolations applied.A Pod is similar to a set of containers with shared namespaces and shared filesystem volumes.Pods in a Kubernetes cluster are used in two main ways:Pods that run a single container. The \"one-container-per-Pod\" model is the  \nmost common Kubernetes use case; in this case, you can think of a Pod as a  \nwrapper around a single container; Kubernetes manages Pods rather than managing  \nthe containers directly.Pods that run multiple containers that need to work together. A Pod can  \nencapsulate an application composed of  \nmultiple co-located containers that are  \ntightly coupled and need to share resources. These co-located containers  \nform a single cohesive unit.Grouping multiple co-located and co-managed containers in a single Pod is a  \nrelatively advanced use case. You should use this pattern only in specific  \ninstances in which your containers are tightly coupled.You don't need to run multiple containers to provide replication (for resilience  \nor capacity); if you need multiple replicas, see",
+        "Reference › Kubernetes-Api › Workload-Resources › Pod-V1\nPod | Kubernetes  \nPodPod is a collection of containers that can run on a host.apiVersion: v1import \"k8s.io/api/core/v1\"PodPod is a collection of containers that can run on a host. This resource is created by clients and scheduled onto hosts.apiVersion: v1kind: Podmetadata (ObjectMeta)Standard object's metadata. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadataspec (PodSpec)Specification of the desired behavior of the pod. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-statusstatus (PodStatus)Most recently observed status of the pod. This data may not be up to date. Populated by the system. Read-only. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#spec-and-statusPodSpecPodSpec is a description of a pod.Containerscontainers ([]Container), requiredPatch strategy: merge on key nameMap: unique values on key name will be kept during a mergeList of containers belonging to the pod. Containers cannot currently be added or removed. There must be at least one container in a Pod. Cannot be updated.initContainers ([]Container)Patch strategy: merge on key nameMap: unique values on key name will be kept during a mergeList of initialization containers belonging to the pod. Init containers are executed in order prior to containers being started. If any init container fails, the pod is considered to have failed and is handled according to its restartPolicy. The name for an init container or normal container must be unique among all containers. Init containers may not have Lifecycle actions, Readiness probes, Liveness probes, or Startup probes. The resourceRequirements of an init container are taken into account during scheduling by finding the highest request/limit for each resource type, and then using the max of that value or the sum of the normal containers.",
+        "Concepts › Workloads › Pods\nobject definition describes the object in detail.The Distributed System Toolkit: Patterns for Composite Containers explains common layouts for Pods with more than one container.Read about Pod topology spread constraintsRead Advanced Pod Configuration to learn the topic in detail.  \nThat page covers aspects of Pod configuration beyond the essentials, including:PriorityClassesRuntimeClassesadvanced ways to configure scheduling: the way that Kubernetes decides which node a Pod should run on.To understand the context for why Kubernetes wraps a common Pod API in other resources  \n(such as StatefulSets or  \nDeployments),  \nyou can read about the prior art, including:AuroraBorgMarathonOmegaTupperware.FeedbackWas this page helpful?Yes  \nNoThanks for the feedback. If you have a specific, answerable question about how to use Kubernetes, ask it on  \nStack Overflow.  \nOpen an issue in the GitHub Repository if you want to  \nreport a problem  \nor  \nsuggest an improvement.Last modified March 26, 2026 at 7:39 PM PST: Update Pod reference for PodGroup (e77da46210)",
+        "Service | Kubernetes ServiceExpose an application running in your cluster behind a single outward-facing endpoint, even when the workload is split across multiple backends.In Kubernetes, a Service is a method for exposing a network application that is running as one or more Pods in your cluster.A key aim of Services in Kubernetes is that you don't need to modify your existing application to use an unfamiliar service discovery mechanism. You can run code in Pods, whether this is a code designed for a cloud-native world, or an older app you've containerized. You use a Service to make that set of Pods available on the network so that clients can interact with it.If you use a Deployment to run your app, that Deployment can create and destroy Pods dynamically. From one moment to the next, you don't know how many of those Pods are working and healthy; you might not even know what those healthy Pods are named. Kubernetes Pods are created and destroyed to match the desired state of your cluster. Pods are ephemeral resources (you should not expect that an individual Pod is reliable and durable).Each Pod gets its own IP address (Kubernetes expects network plugins to ensure this). For a given Deployment in your cluster, the set of Pods running in one moment in time could be different from the set of Pods running that application a moment later.This leads to a problem: if some set of Pods (call them \"backends\") provides functionality to other Pods (call them \"frontends\") inside your cluster, how do the frontends find out and keep track of which IP address to connect to, so that the frontend can use the backend part of the workload?Enter Services.Services in KubernetesThe Service API, part of Kubernetes, is an abstraction to help you expose groups of Pods over a network. Each Service object defines a logical set of endpoints (usually these endpoints are Pods) along with a policy about how to make those pods accessible.For example, consider a stateless image-processing backend which is running with 3 replicas. Those replicas are fungible—frontends do not care which backend they use.",
+        "Concepts › Overview › What-Is-Kubernetes\nOverview | Kubernetes  \nOverviewKubernetes is a portable, extensible, open source platform for managing containerized workloads and services that facilitate both declarative configuration and automation. It has a large, rapidly growing ecosystem. Kubernetes services, support, and tools are widely available.This page is an overview of Kubernetes.The name Kubernetes originates from Greek, meaning helmsman or pilot. K8s as an abbreviation  \nresults from counting the eight letters between the \"K\" and the \"s\". Google open sourced the  \nKubernetes project in 2014. Kubernetes combines  \nover 15 years of Google's experience running  \nproduction workloads at scale with best-of-breed ideas and practices from the community.Why you need Kubernetes and what it can doContainers are a good way to bundle and run your applications. In a production  \nenvironment, you need to manage the containers that run the applications and  \nensure that there is no downtime. For example, if a container goes down, another  \ncontainer needs to start. Wouldn't it be easier if this behavior was handled by a system?That's how Kubernetes comes to the rescue! Kubernetes provides you with a framework  \nto run distributed systems resiliently. It takes care of scaling and failover for  \nyour application, provides deployment patterns, and more. For example: Kubernetes  \ncan easily manage a canary deployment for your system.Kubernetes provides you with:Service discovery and load balancing  \nKubernetes can expose a container using a DNS name or its own IP address.  \nIf traffic to a container is high, Kubernetes is able to load balance and distribute  \nthe network traffic so that the deployment is stable.Storage orchestration  \nKubernetes allows you to automatically mount a storage system of your choice, such as  \nlocal storage, public cloud providers, and more.Automated rollouts and rollbacks  \nYou can describe the desired state for your deployed containers using Kubernetes,  \nand it can change the actual state to the desired state at a controlled rate.  \nFor example, you can automate Kubernetes to create new containers for your  \ndeployment, remove existing containers and adopt all their resources to the new container.Automatic bin packing  \nYou provide Kubernetes with a cluster of nodes that it can use to run containerized tasks."
+      ],
+      "context_sources": [
+        "concepts__workloads__pods.html",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "concepts__workloads__pods.html",
+        "concepts__services-networking__service.txt",
+        "concepts__overview__what-is-kubernetes.docx"
+      ],
+      "context_source_names": [
+        "concepts__workloads__pods.html",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "concepts__workloads__pods.html",
+        "concepts__services-networking__service.txt",
+        "concepts__overview__what-is-kubernetes.docx"
+      ],
+      "latency_ms": 67594.2,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "concepts__workloads__pods.html"
+        ]
+      },
+      "tokens_used": 5996,
+      "confidence": 1.0,
+      "crag_action": null,
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 1.0,
+      "unsupported_claims": [],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0005
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 0.9333,
+        "answer_relevancy": 0.9668,
+        "context_precision": 0.8333,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    },
+    {
+      "id": "q-002",
+      "question": "What is a Kubernetes Deployment and what does it manage?",
+      "intent": "rag",
+      "demonstrates_feature": "baseline",
+      "golden_sources": [
+        "concepts__workloads__controllers__deployment.txt"
+      ],
+      "golden_answer_keywords": [
+        "deployment",
+        "replica",
+        "rolling update"
+      ],
+      "answer": "A **Kubernetes Deployment** is a controller object that manages a set of Pods for an application workload. It provides declarative updates: you describe the desired state (such as the number of replicas, the Pod template, etc.) and the Deployment controller works to make the actual state match that desired state at a controlled rate. In practice, a Deployment creates and owns **ReplicaSets**, and those ReplicaSets in turn create the Pods that run your containers[2]. Thus, a Deployment manages the lifecycle of its Pods through the underlying ReplicaSets.",
+      "sources": [
+        "concepts__overview__what-is-kubernetes.docx",
+        "concepts__workloads__controllers__deployment.txt",
+        "tutorials__kubernetes-basics__explore__explore-intro.pdf",
+        "concepts__services-networking__service.txt"
+      ],
+      "contexts": [
+        "Concepts › Overview › What-Is-Kubernetes\nOverview | Kubernetes  \nOverviewKubernetes is a portable, extensible, open source platform for managing containerized workloads and services that facilitate both declarative configuration and automation. It has a large, rapidly growing ecosystem. Kubernetes services, support, and tools are widely available.This page is an overview of Kubernetes.The name Kubernetes originates from Greek, meaning helmsman or pilot. K8s as an abbreviation  \nresults from counting the eight letters between the \"K\" and the \"s\". Google open sourced the  \nKubernetes project in 2014. Kubernetes combines  \nover 15 years of Google's experience running  \nproduction workloads at scale with best-of-breed ideas and practices from the community.Why you need Kubernetes and what it can doContainers are a good way to bundle and run your applications. In a production  \nenvironment, you need to manage the containers that run the applications and  \nensure that there is no downtime. For example, if a container goes down, another  \ncontainer needs to start. Wouldn't it be easier if this behavior was handled by a system?That's how Kubernetes comes to the rescue! Kubernetes provides you with a framework  \nto run distributed systems resiliently. It takes care of scaling and failover for  \nyour application, provides deployment patterns, and more. For example: Kubernetes  \ncan easily manage a canary deployment for your system.Kubernetes provides you with:Service discovery and load balancing  \nKubernetes can expose a container using a DNS name or its own IP address.  \nIf traffic to a container is high, Kubernetes is able to load balance and distribute  \nthe network traffic so that the deployment is stable.Storage orchestration  \nKubernetes allows you to automatically mount a storage system of your choice, such as  \nlocal storage, public cloud providers, and more.Automated rollouts and rollbacks  \nYou can describe the desired state for your deployed containers using Kubernetes,  \nand it can change the actual state to the desired state at a controlled rate.  \nFor example, you can automate Kubernetes to create new containers for your  \ndeployment, remove existing containers and adopt all their resources to the new container.Automatic bin packing  \nYou provide Kubernetes with a cluster of nodes that it can use to run containerized tasks.",
+        "Deployments | Kubernetes DeploymentsA Deployment manages a set of Pods to run an application workload, usually one that doesn't maintain state.A Deployment provides declarative updates for Pods and ReplicaSets.You describe a desired state in a Deployment, and the Deployment Controller changes the actual state to the desired state at a controlled rate. You can define Deployments to create new ReplicaSets, or to remove existing Deployments and adopt all their resources with new Deployments.Note:Do not manage ReplicaSets owned by a Deployment. Consider opening an issue in the main Kubernetes repository if your use case is not covered below.Use CaseThe following are typical use cases for Deployments:Create a Deployment to rollout a ReplicaSet. The ReplicaSet creates Pods in the background. Check the status of the rollout to see if it succeeds or not.Declare the new state of the Pods by updating the PodTemplateSpec of the Deployment. A new ReplicaSet is created, and the Deployment gradually scales it up while scaling down the old ReplicaSet, ensuring Pods are replaced at a controlled rate. Each new ReplicaSet updates the revision of the Deployment.Rollback to an earlier Deployment revision if the current state of the Deployment is not stable. Each rollback updates the revision of the Deployment.Scale up the Deployment to facilitate more load.Pause the rollout of a Deployment to apply multiple fixes to its PodTemplateSpec and then resume it to start a new rollout.Use the status of the Deployment as an indicator that a rollout has stuck.Clean up older ReplicaSets that you don't need anymore.Creating a DeploymentThe following is an example of a Deployment. It creates a ReplicaSet to bring up three nginx Pods:controllers/nginx-deployment.yaml apiVersion: apps/v1 kind: Deployment metadata: name: nginx-deployment labels: app: nginx spec: replicas: 3 selector: matchLabels: app: nginx template: metadata: labels: app: nginx spec: containers: - name: nginx image: nginx:1.14.2 ports: - containerPort: 80 In this example:A Deployment named nginx-deployment is created, indicated by the .metadata.name field. This name will become the basis for the ReplicaSets and Pods which are created later.",
+        "Concepts › Overview › What-Is-Kubernetes\nYou tell Kubernetes how much CPU and memory (RAM) each container needs. Kubernetes can fit  \ncontainers onto your nodes to make the best use of your resources.Self-healing  \nKubernetes restarts containers that fail, replaces containers, kills containers that don't  \nrespond to your user-defined health check, and doesn't advertise them to clients until they  \nare ready to serve.Secret and configuration management  \nKubernetes lets you store and manage sensitive information, such as passwords, OAuth tokens,  \nand SSH keys. You can deploy and update secrets and application configuration without  \nrebuilding your container images, and without exposing secrets in your stack configuration.Batch execution  \nIn addition to services, Kubernetes can manage your batch and CI workloads, replacing containers that fail, if desired.Horizontal scaling  \nScale your application up and down with a simple command, with a UI, or automatically based on CPU usage.IPv4/IPv6 dual-stack  \nAllocation of IPv4 and IPv6 addresses to Pods and Services.Designed for extensibility  \nAdd features to your Kubernetes cluster without changing upstream source code.What Kubernetes is notKubernetes is not a traditional, all-inclusive PaaS (Platform as a Service) system.  \nSince Kubernetes operates at the container level rather than at the hardware level,  \nit provides some generally applicable features common to PaaS offerings, such as  \ndeployment, scaling, load balancing, and lets users integrate their logging, monitoring,  \nand alerting solutions. However, Kubernetes is not monolithic, and these default solutions  \nare optional and pluggable. Kubernetes provides the building blocks for building developer  \nplatforms, but preserves user choice and flexibility where it is important.Kubernetes:Does not limit the types of applications supported. Kubernetes aims to support an  \nextremely diverse variety of workloads, including stateless, stateful, and data-processing  \nworkloads. If an application can run in a container, it should run great on Kubernetes.Does not deploy source code and does not build your application. Continuous Integration,  \nDelivery, and Deployment (CI/CD) workflows are determined by organization cultures and  \npreferences as well as technical requirements.Does not provide application-level services, such as middleware (for example, message buses),",
+        "Tutorials › Kubernetes-Basics › Explore › Explore-Intro\nIn case of a Node failure, identical Pods are scheduled on other available Nodes in the cluster.Pods overviewContainers should only be scheduled together in a single Pod if they are tightly coupled and need to share resources such as disk.NodesA Pod always runs on a Node. A Node is a worker machine in Kubernetes and may be either a virtual or a physical machine, depending on the cluster. Each Node is managed by the control plane. A Node can have multiple pods, and the Kubernetes control plane automatically handles scheduling the pods across the Nodes in the cluster. The control plane's automatic scheduling takes into account the available resources on each Node.Every Kubernetes Node runs at least:Kubelet, a process responsible for communication between the Kubernetes control plane and the Node; it manages the Pods and the containers running on a machine.A container runtime (like Docker) responsible for pulling the container image from a registry, unpacking the container, and running the application.Nodes overviewTroubleshooting with kubectlIn Module 2, you used the kubectl command-line interface. You'll continue to use it in Module 3 to get information about deployed applications and their environments. The most common operations can be done with the following kubectl subcommands:kubectl get - list resourceskubectl describe - show detailed information about a resourcekubectl logs - print the logs from a container in a podkubectl exec - execute a command on a container in a podYou can use these commands to see when applications were deployed, what their current statuses are, where they are running and what their configurations are.Now that we know more about our cluster components and the command line, let's explore our application.Check application configurationLet's verify that the application we deployed in the previous scenario is running.",
+        "Service | Kubernetes ServiceExpose an application running in your cluster behind a single outward-facing endpoint, even when the workload is split across multiple backends.In Kubernetes, a Service is a method for exposing a network application that is running as one or more Pods in your cluster.A key aim of Services in Kubernetes is that you don't need to modify your existing application to use an unfamiliar service discovery mechanism. You can run code in Pods, whether this is a code designed for a cloud-native world, or an older app you've containerized. You use a Service to make that set of Pods available on the network so that clients can interact with it.If you use a Deployment to run your app, that Deployment can create and destroy Pods dynamically. From one moment to the next, you don't know how many of those Pods are working and healthy; you might not even know what those healthy Pods are named. Kubernetes Pods are created and destroyed to match the desired state of your cluster. Pods are ephemeral resources (you should not expect that an individual Pod is reliable and durable).Each Pod gets its own IP address (Kubernetes expects network plugins to ensure this). For a given Deployment in your cluster, the set of Pods running in one moment in time could be different from the set of Pods running that application a moment later.This leads to a problem: if some set of Pods (call them \"backends\") provides functionality to other Pods (call them \"frontends\") inside your cluster, how do the frontends find out and keep track of which IP address to connect to, so that the frontend can use the backend part of the workload?Enter Services.Services in KubernetesThe Service API, part of Kubernetes, is an abstraction to help you expose groups of Pods over a network. Each Service object defines a logical set of endpoints (usually these endpoints are Pods) along with a policy about how to make those pods accessible.For example, consider a stateless image-processing backend which is running with 3 replicas. Those replicas are fungible—frontends do not care which backend they use."
+      ],
+      "context_sources": [
+        "concepts__overview__what-is-kubernetes.docx",
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__overview__what-is-kubernetes.docx",
+        "tutorials__kubernetes-basics__explore__explore-intro.pdf",
+        "concepts__services-networking__service.txt"
+      ],
+      "context_source_names": [
+        "concepts__overview__what-is-kubernetes.docx",
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__overview__what-is-kubernetes.docx",
+        "tutorials__kubernetes-basics__explore__explore-intro.pdf",
+        "concepts__services-networking__service.txt"
+      ],
+      "latency_ms": 71828.0,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "concepts__workloads__controllers__deployment.txt"
+        ]
+      },
+      "tokens_used": 6077,
+      "confidence": 1.0,
+      "crag_action": null,
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 1.0,
+      "unsupported_claims": [],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0006
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.9389,
+        "context_precision": 0.5,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    },
+    {
+      "id": "q-003",
+      "question": "A container in my pod keeps crashing and restarting. How do I see what went wrong?",
+      "intent": "rag",
+      "demonstrates_feature": "baseline",
+      "golden_sources": [
+        "concepts__cluster-administration__logging.pdf",
+        "reference__kubectl__cheatsheet.txt"
+      ],
+      "golden_answer_keywords": [
+        "kubectl logs",
+        "previous",
+        "container"
+      ],
+      "answer": "To find out why a container in a Pod is crashing, inspect the container’s status fields that are reported in the Pod object.\n\n* **Current state** – `containerStatuses.state` shows the container’s present condition. If the container is in a terminated state, the sub‑field `containerStatuses.state.terminated` contains details such as the exit code (`exitCode`), the time it was started (`startedAt`) and the time it finished (`finishedAt`) [3].\n\n* **Last termination** – `containerStatuses.lastState` holds the previous termination information. When the container has been restarted, the previous termination details are kept here, again with `exitCode`, `startedAt` and `finishedAt` [2][3].\n\n* **Started flag** – `containerStatuses.started` indicates whether the container has completed its postStart hook and passed its startup probe. It is `false` (or null) until the startup probe succeeds, and it is reset to `false` each time the container is restarted, causing the startup probe to run again [3].\n\nBy examining these fields you can see:\n\n* The **exit code** that caused the last termination (`containerStatuses.state.terminated.exitCode` or `containerStatuses.lastState.terminated.exitCode`).\n* The **timestamps** of when the container was started and when it terminated (`startedAt` and `finishedAt`).\n* Whether the container has **successfully passed its startup probe** (`containerStatuses.started`).\n\nThese pieces of information together let you determine why the container stopped and why it is being restarted. [2][3]",
+      "sources": [
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "concepts__workloads__pods.html"
+      ],
+      "contexts": [
+        "Reference › Kubernetes-Api › Workload-Resources › Pod-V1\nMore info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle#container-probesrestartPolicy (string)RestartPolicy defines the restart behavior of individual containers in a pod. This overrides the pod-level restart policy. When this field is not specified, the restart behavior is defined by the Pod's restart policy and the container type. Additionally, setting the RestartPolicy as \"Always\" for the init container will have the following effect: this init container will be continually restarted on exit until all regular containers have terminated. Once all regular containers have completed, all init containers with restartPolicy \"Always\" will be shut down. This lifecycle differs from normal init containers and is often referred to as a \"sidecar\" container. Although this init container still starts in the init container sequence, it does not wait for the container to complete before proceeding to the next init container. Instead, the next init container starts immediately after this init container is started, or after any startupProbe has successfully completed.restartPolicyRules ([]ContainerRestartRule)Atomic: will be replaced during a mergeRepresents a list of rules to be checked to determine if the container should be restarted on exit. The rules are evaluated in order. Once a rule matches a container exit condition, the remaining rules are ignored. If no rule matches the container exit condition, the Container-level restart policy determines the whether the container is restarted or not. Constraints on the rules: - At most 20 rules are allowed. - Rules can have the same action. - Identical rules are not forbidden in validations. When rules are specified, container MUST set RestartPolicy explicitly even it if matches the Pod's RestartPolicy.ContainerRestartRule describes how a container exit is handled.restartPolicyRules.action (string), requiredSpecifies the action taken on a container exit if the requirements are satisfied.",
+        "Reference › Kubernetes-Api › Workload-Resources › Pod-V1\nFor example, Device Plugin got unregistered and hasn't been re-registered since.In future we may want to introduce the PermanentlyUnhealthy Status.containerStatuses.allocatedResourcesStatus.resources.message (string)Message provides human-readable context for Health (e.g. \"ECC error count exceeded threshold\"). This field is populated by the kubelet when ResourceHealthStatusMessage is enabled if the DRA plugin returns a message, and is null otherwise.containerStatuses.containerID (string)ContainerID is the ID of the container in the format '<type>://<container_id>'. Where type is a container runtime identifier, returned from Version call of CRI API (for example \"containerd\").containerStatuses.image (string), requiredImage is the name of container image that the container is running. The container image may not match the image used in the PodSpec, as it may have been resolved by the runtime. More info: https://kubernetes.io/docs/concepts/containers/images.containerStatuses.imageID (string), requiredImageID is the image ID of the container's image. The image ID may not match the image ID of the image used in the PodSpec, as it may have been resolved by the runtime.containerStatuses.lastState (ContainerState)LastTerminationState holds the last termination state of the container to help debug container crashes and restarts. This field is not populated if the container is still running and RestartCount is 0.ContainerState holds a possible state of container. Only one of its members may be specified. If none of them is specified, the default one is ContainerStateWaiting.containerStatuses.lastState.running (ContainerStateRunning)Details about a running containerContainerStateRunning is a running state of a container.containerStatuses.lastState.running.startedAt (Time)Time at which the container was last (re-)startedTime is a wrapper around time.Time which supports correct marshaling to YAML and JSON.",
+        "Reference › Kubernetes-Api › Workload-Resources › Pod-V1\nThe value is never negative.containerStatuses.started (boolean)Started indicates whether the container has finished its postStart lifecycle hook and passed its startup probe. Initialized as false, becomes true after startupProbe is considered successful. Resets to false when the container is restarted, or if kubelet loses state temporarily. In both cases, startup probes will run again. Is always true when no startupProbe is defined and container is running and has passed the postStart lifecycle hook. The null value must be treated the same as false.containerStatuses.state (ContainerState)State holds details about the container's current condition.ContainerState holds a possible state of container. Only one of its members may be specified. If none of them is specified, the default one is ContainerStateWaiting.containerStatuses.state.running (ContainerStateRunning)Details about a running containerContainerStateRunning is a running state of a container.containerStatuses.state.running.startedAt (Time)Time at which the container was last (re-)startedTime is a wrapper around time.Time which supports correct marshaling to YAML and JSON. Wrappers are provided for many of the factory methods that the time package offers.containerStatuses.state.terminated (ContainerStateTerminated)Details about a terminated containerContainerStateTerminated is a terminated state of a container.containerStatuses.state.terminated.containerID (string)Container's ID in the format '<type>://<container_id>'containerStatuses.state.terminated.exitCode (int32), requiredExit status from the last termination of the containercontainerStatuses.state.terminated.startedAt (Time)Time at which previous execution of the container startedTime is a wrapper around time.Time which supports correct marshaling to YAML and JSON. Wrappers are provided for many of the factory methods that the time package offers.containerStatuses.state.terminated.finishedAt (Time)Time at which the container last terminatedTime is a wrapper around time.Time which supports correct marshaling to YAML and JSON.",
+        "Reference › Kubernetes-Api › Workload-Resources › Pod-V1\nFor example, Device Plugin got unregistered and hasn't been re-registered since.In future we may want to introduce the PermanentlyUnhealthy Status.initContainerStatuses.allocatedResourcesStatus.resources.message (string)Message provides human-readable context for Health (e.g. \"ECC error count exceeded threshold\"). This field is populated by the kubelet when ResourceHealthStatusMessage is enabled if the DRA plugin returns a message, and is null otherwise.initContainerStatuses.containerID (string)ContainerID is the ID of the container in the format '<type>://<container_id>'. Where type is a container runtime identifier, returned from Version call of CRI API (for example \"containerd\").initContainerStatuses.image (string), requiredImage is the name of container image that the container is running. The container image may not match the image used in the PodSpec, as it may have been resolved by the runtime. More info: https://kubernetes.io/docs/concepts/containers/images.initContainerStatuses.imageID (string), requiredImageID is the image ID of the container's image. The image ID may not match the image ID of the image used in the PodSpec, as it may have been resolved by the runtime.initContainerStatuses.lastState (ContainerState)LastTerminationState holds the last termination state of the container to help debug container crashes and restarts. This field is not populated if the container is still running and RestartCount is 0.ContainerState holds a possible state of container. Only one of its members may be specified.",
+        "Concepts › Workloads › Pods\nwrapper around a single container; Kubernetes manages Pods rather than managing  \nthe containers directly.Pods that run multiple containers that need to work together. A Pod can  \nencapsulate an application composed of  \nmultiple co-located containers that are  \ntightly coupled and need to share resources. These co-located containers  \nform a single cohesive unit of service-for example, one container serving data  \nstored in a shared volume to the public, while a separate  \nsidecar container  \nrefreshes or updates those files.  \nThe Pod wraps these containers, storage resources, and an ephemeral network  \nidentity together as a single unit.For example, you might have a container that  \nacts as a web server for files in a shared volume, and a separate  \nsidecar container  \nthat updates those files from a remote source, as in the following diagram:Some Pods have init containers  \nas well as app containers.  \nBy default, init containers run and complete before the app containers are started.You can also have sidecar containers  \nthat provide auxiliary services to the main application Pod (for example: a service mesh).FEATURE STATE:  \nKubernetes v1.33 [stable](enabled by default)Enabled by default, the SidecarContainers feature gate  \nallows you to specify restartPolicy: Always for init containers.  \nSetting the Always restart policy ensures that the containers where you set it are  \ntreated as sidecars that are kept running during the entire lifetime of the Pod.  \nContainers that you explicitly define as sidecar containers  \nstart up before the main application Pod and remain running until the Pod is  \nshut down.Container probesA probe is a diagnostic performed periodically by the kubelet on a container.  \nTo perform a diagnostic, the kubelet can invoke different actions:ExecAction (performed with the help of the container runtime)TCPSocketAction (checked directly by the kubelet)HTTPGetAction (checked directly by the kubelet)You can read more about probes  \nin the Pod Lifecycle documentation.What's nextLearn about the lifecycle of a Pod.Read about PodDisruptionBudget  \nand how you can use it to manage application availability during disruptions.Pod is a top-level resource in the Kubernetes REST API.  \nThe  \nPod"
+      ],
+      "context_sources": [
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "concepts__workloads__pods.html"
+      ],
+      "context_source_names": [
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "concepts__workloads__pods.html"
+      ],
+      "latency_ms": 120738.7,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 0.0,
+        "matched": []
+      },
+      "tokens_used": 13076,
+      "confidence": 1.0,
+      "crag_action": null,
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 1.0,
+      "unsupported_claims": [],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0004
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 0.8333,
+        "answer_relevancy": 0.916,
+        "context_precision": 0.0,
+        "context_recall": 0.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    },
+    {
+      "id": "q-004",
+      "question": "How do containers share resources within a Pod?",
+      "intent": "rag",
+      "demonstrates_feature": "baseline",
+      "golden_sources": [
+        "concepts__workloads__pods.html"
+      ],
+      "golden_answer_keywords": [
+        "network namespace",
+        "volumes",
+        "localhost"
+      ],
+      "answer": "Containers in a Pod share the same network namespace and storage resources. They use a single IP address and port space, so they can reach each other via `localhost` and communicate with standard inter‑process mechanisms such as System V semaphores or POSIX shared memory. They also share any volumes that are mounted into the Pod, giving them common storage access. These shared resources let the containers in the same Pod work together as a tightly‑coupled unit[1].",
+      "sources": [
+        "concepts__workloads__pods.html",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx"
+      ],
+      "contexts": [
+        "Concepts › Workloads › Pods\ncan communicate with one another using localhost. When containers in a Pod communicate  \nwith entities outside the Pod,  \nthey must coordinate how they use the shared network resources (such as ports).  \nWithin a Pod, containers share an IP address and port space, and  \ncan find each other via localhost. The containers in a Pod can also communicate  \nwith each other using standard inter-process communications like SystemV semaphores  \nor POSIX shared memory. Containers in different Pods have distinct IP addresses  \nand can not communicate by OS-level IPC without special configuration.  \nContainers that want to interact with a container running in a different Pod can  \nuse IP networking to communicate.Containers within the Pod see the system hostname as being the same as the configured  \nname for the Pod. There's more about this in the networking  \nsection.Pod security settingsTo set security constraints on Pods and containers, you use the  \nsecurityContext field in the Pod specification. This field gives you  \ngranular control over what a Pod or individual containers can do. See Advanced Pod Configuration for more details.For basic security configuration, you should meet the Baseline Pod security standard and run containers as non-root. You can set simple security contexts:apiVersion: v1  \nkind: Pod  \nmetadata:  \nname: security-context-demo  \nspec:  \nsecurityContext:  \nrunAsUser: 1000  \nrunAsGroup: 3000  \nfsGroup: 2000  \ncontainers:  \n- name: sec-ctx-demo  \nimage: busybox  \ncommand: [\"sh\", \"-c\", \"sleep 1h\"]  \nFor advanced security context configuration including capabilities, seccomp profiles, and detailed security options, see the security concepts section.To learn about kernel-level security constraints that you can use,  \nsee Linux kernel security constraints for Pods and containers.To learn more about the Pod security context, see  \nConfigure a Security Context for a Pod or Container.Resource requests and limitsWhen you specify a Pod, you can optionally specify how much of each resource  \na container needs. The most common resources to specify are CPU and memory (RAM).When you specify the resource request for containers in a Pod, the  \nkube-scheduler uses this information to decide which node to place the Pod on.  \nWhen you specify a resource limit for a container, the kubelet enforces  \nthose limits so that the running container is not allowed to use more of that",
+        "Concepts › Workloads › Pods\nPods | Kubernetes  \nPodsPods are the smallest deployable units of computing that you can create and manage in Kubernetes.A Pod (as in a pod of whales or pea pod) is a group of one or more  \ncontainers, with shared storage and network resources, and a specification for how to run the containers. A Pod's contents are always co-located and  \nco-scheduled, and run in a shared context. A Pod models an  \napplication-specific \"logical host\": it contains one or more application  \ncontainers which are relatively tightly coupled.  \nIn non-cloud contexts, applications executed on the same physical or virtual machine are analogous to cloud applications executed on the same logical host.As well as application containers, a Pod can contain  \ninit containers that run  \nduring Pod startup. You can also inject  \nephemeral containers  \nfor debugging a running Pod.What is a Pod?Note:You need to install a container runtime  \ninto each node in the cluster so that Pods can run there.The shared context of a Pod is a set of Linux namespaces, cgroups, and  \npotentially other facets of isolation - the same things that isolate a container. Within a Pod's context, the individual applications may have  \nfurther sub-isolations applied.A Pod is similar to a set of containers with shared namespaces and shared filesystem volumes.Pods in a Kubernetes cluster are used in two main ways:Pods that run a single container. The \"one-container-per-Pod\" model is the  \nmost common Kubernetes use case; in this case, you can think of a Pod as a  \nwrapper around a single container; Kubernetes manages Pods rather than managing  \nthe containers directly.Pods that run multiple containers that need to work together. A Pod can  \nencapsulate an application composed of  \nmultiple co-located containers that are  \ntightly coupled and need to share resources. These co-located containers  \nform a single cohesive unit.Grouping multiple co-located and co-managed containers in a single Pod is a  \nrelatively advanced use case. You should use this pattern only in specific  \ninstances in which your containers are tightly coupled.You don't need to run multiple containers to provide replication (for resilience  \nor capacity); if you need multiple replicas, see",
+        "Concepts › Workloads › Pods\nWorkload management.Using PodsThe following is an example of a Pod which consists of a container running the image nginx:1.14.2.pods/simple-pod.yaml  \napiVersion: v1  \nkind: Pod  \nmetadata:  \nname: nginx  \nspec:  \ncontainers:  \n- name: nginx  \nimage: nginx:1.14.2  \nports:  \n- containerPort: 80  \nTo create the Pod shown above, run the following command:kubectl apply -f https://k8s.io/examples/pods/simple-pod.yaml  \nPods are generally not created directly and are created using workload resources.  \nSee Working with Pods for more information on how Pods are used  \nwith workload resources.Workload resources for managing podsUsually you don't need to create Pods directly, even singleton Pods. Instead, create them using workload resources such as Deployment or Job.  \nIf your Pods need to track state, consider the  \nStatefulSet resource.Each Pod is meant to run a single instance of a given application. If you want to  \nscale your application horizontally (to provide more overall resources by running  \nmore instances), you should use multiple Pods, one for each instance. In  \nKubernetes, this is typically referred to as replication.  \nReplicated Pods are usually created and managed as a group by a workload resource  \nand its controller.See Pods and controllers for more information on how  \nKubernetes uses workload resources, and their controllers, to implement application  \nscaling and auto-healing.Pods natively provide two kinds of shared resources for their constituent containers:  \nnetworking and storage.Working with PodsYou'll rarely create individual Pods directly in Kubernetes-even singleton Pods. This  \nis because Pods are designed as relatively ephemeral, disposable entities. When  \na Pod gets created (directly by you, or indirectly by a  \ncontroller), the new Pod is  \nscheduled to run on a Node in your cluster.  \nThe Pod remains on that node until the Pod finishes execution, the Pod object is deleted,  \nthe Pod is evicted for lack of resources, or the node fails.Note:Restarting a container in a Pod should not be confused with restarting a Pod. A Pod  \nis not a process, but an environment for running container(s). A Pod persists until  \nit is deleted.The name of a Pod must be a valid  \nDNS subdomain",
+        "Concepts › Workloads › Pods\nwrapper around a single container; Kubernetes manages Pods rather than managing  \nthe containers directly.Pods that run multiple containers that need to work together. A Pod can  \nencapsulate an application composed of  \nmultiple co-located containers that are  \ntightly coupled and need to share resources. These co-located containers  \nform a single cohesive unit of service-for example, one container serving data  \nstored in a shared volume to the public, while a separate  \nsidecar container  \nrefreshes or updates those files.  \nThe Pod wraps these containers, storage resources, and an ephemeral network  \nidentity together as a single unit.For example, you might have a container that  \nacts as a web server for files in a shared volume, and a separate  \nsidecar container  \nthat updates those files from a remote source, as in the following diagram:Some Pods have init containers  \nas well as app containers.  \nBy default, init containers run and complete before the app containers are started.You can also have sidecar containers  \nthat provide auxiliary services to the main application Pod (for example: a service mesh).FEATURE STATE:  \nKubernetes v1.33 [stable](enabled by default)Enabled by default, the SidecarContainers feature gate  \nallows you to specify restartPolicy: Always for init containers.  \nSetting the Always restart policy ensures that the containers where you set it are  \ntreated as sidecars that are kept running during the entire lifetime of the Pod.  \nContainers that you explicitly define as sidecar containers  \nstart up before the main application Pod and remain running until the Pod is  \nshut down.Container probesA probe is a diagnostic performed periodically by the kubelet on a container.  \nTo perform a diagnostic, the kubelet can invoke different actions:ExecAction (performed with the help of the container runtime)TCPSocketAction (checked directly by the kubelet)HTTPGetAction (checked directly by the kubelet)You can read more about probes  \nin the Pod Lifecycle documentation.What's nextLearn about the lifecycle of a Pod.Read about PodDisruptionBudget  \nand how you can use it to manage application availability during disruptions.Pod is a top-level resource in the Kubernetes REST API.  \nThe  \nPod",
+        "Reference › Kubernetes-Api › Workload-Resources › Pod-V1\nIf a status for a non-existent container is present in the list, or the list has duplicate names, the behavior of various Kubernetes components is not defined and those statuses might be ignored. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#pod-and-container-statusContainerStatus contains details for the current status of this container.initContainerStatuses.allocatedResources (map[string]Quantity)AllocatedResources represents the compute resources allocated for this container by the node. Kubelet sets this value to Container.Resources.Requests upon successful pod admission and after successfully admitting desired pod resize.initContainerStatuses.allocatedResourcesStatus ([]ResourceStatus)Patch strategy: merge on key nameMap: unique values on key name will be kept during a mergeAllocatedResourcesStatus represents the status of various resources allocated for this Pod.ResourceStatus represents the status of a single resource allocated to a Pod.initContainerStatuses.allocatedResourcesStatus.name (string), requiredName of the resource. Must be unique within the pod and in case of non-DRA resource, match one of the resources from the pod spec. For DRA resources, the value must be \"claim:<claim_name>/<request>\". When this status is reported about a container, the \"claim_name\" and \"request\" must match one of the claims of this container.initContainerStatuses.allocatedResourcesStatus.resources ([]ResourceHealth)Map: unique values on key resourceID will be kept during a mergeList of unique resources health. Each element in the list contains an unique resource ID and its health. At a minimum, for the lifetime of a Pod, resource ID must uniquely identify the resource allocated to the Pod on the Node. If other Pod on the same Node reports the status with the same resource ID, it must be the same resource they share. See ResourceID type definition for a specific format it has in various use cases.ResourceHealth represents the health of a resource. It has the latest device health information."
+      ],
+      "context_sources": [
+        "concepts__workloads__pods.html",
+        "concepts__workloads__pods.html",
+        "concepts__workloads__pods.html",
+        "concepts__workloads__pods.html",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx"
+      ],
+      "context_source_names": [
+        "concepts__workloads__pods.html",
+        "concepts__workloads__pods.html",
+        "concepts__workloads__pods.html",
+        "concepts__workloads__pods.html",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx"
+      ],
+      "latency_ms": 71458.2,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "concepts__workloads__pods.html"
+        ]
+      },
+      "tokens_used": 6467,
+      "confidence": 1.0,
+      "crag_action": null,
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 1.0,
+      "unsupported_claims": [],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0004
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.9215,
+        "context_precision": 1.0,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    },
+    {
+      "id": "q-005",
+      "question": "What does ImagePullBackOff mean during a Deployment rollout, and how do I recover from it?",
+      "intent": "rag",
+      "demonstrates_feature": "hybrid",
+      "golden_sources": [
+        "concepts__workloads__controllers__deployment.txt",
+        "tutorials__kubernetes-basics__update__update-intro.txt"
+      ],
+      "golden_answer_keywords": [
+        "ImagePullBackOff",
+        "image",
+        "rollout"
+      ],
+      "answer": "**What the status means**\n\nDuring a Deployment rollout the controller creates a new ReplicaSet and then Pods from that ReplicaSet.  \nIf a Pod cannot download the container image, its status becomes **`ImagePullBackOff`**. In the example in the documents the pod `nginx-deployment-3066724191-08mng` shows:\n\n```\n0/1   ImagePullBackOff   0   6s\n```\n\nThis indicates that the pod is stuck in an image‑pull loop – the image specified in the Deployment’s pod template cannot be pulled (for example because the image name is wrong, the registry is unreachable, or credentials are missing)[5].\n\n**How to recover**\n\nThe documents describe two ways to get the Deployment out of this state:\n\n1. **Fix the image reference** – correct the image name (or registry credentials) in the Deployment’s pod template and then let the rollout continue.  \n2. **Rollback to the previous revision** – if the bad image was introduced by a recent change, you can undo the rollout and revert to the last known good revision:\n\n```bash\nkubectl rollout undo deployment/nginx-deployment\n# or, to a specific revision:\nkubectl rollout undo deployment/nginx-deployment --to-revision=2\n```\n\nAfter the rollback the Deployment will be restored to the earlier version, and the pods will run with the previously working image[2].  \n\nSo, `ImagePullBackOff` means the new Pods cannot pull the specified container image, and you can recover either by correcting the image specification or by rolling back the Deployment to a prior revision.",
+      "sources": [
+        "concepts__workloads__controllers__deployment.txt"
+      ],
+      "contexts": [
+        "28s Note:You cannot rollback a paused Deployment until you resume it.Deployment statusA Deployment enters various states during its lifecycle. It can be progressing while rolling out a new ReplicaSet, it can be complete, or it can fail to progress.Progressing DeploymentKubernetes marks a Deployment as progressing when one of the following tasks is performed:The Deployment creates a new ReplicaSet.The Deployment is scaling up its newest ReplicaSet.The Deployment is scaling down its older ReplicaSet(s).New Pods become ready or available (ready for at least MinReadySeconds).When the rollout becomes “progressing”, the Deployment controller adds a condition with the following attributes to the Deployment's .status.conditions:type: Progressingstatus: \"True\"reason: NewReplicaSetCreated | reason: FoundNewReplicaSet | reason: ReplicaSetUpdatedYou can monitor the progress for a Deployment by using kubectl rollout status.Complete DeploymentKubernetes marks a Deployment as complete when it has the following characteristics:All of the replicas associated with the Deployment have been updated to the latest version you've specified, meaning any updates you've requested have been completed.All of the replicas associated with the Deployment are available.No old replicas for the Deployment are running.When the rollout becomes “complete”, the Deployment controller sets a condition with the following attributes to the Deployment's .status.conditions:type: Progressingstatus: \"True\"reason: NewReplicaSetAvailableThis Progressing condition will retain a status value of \"True\" until a new rollout is initiated. The condition holds even when availability of replicas changes (which does instead affect the Available condition).You can check if a Deployment has completed by using kubectl rollout status. If the rollout completed successfully, kubectl rollout status returns a zero exit code.kubectl rollout status deployment/nginx-deployment The output is similar to this:Waiting for rollout to finish: 2 of 3 updated replicas are available... deployment \"nginx-deployment\" successfully rolled out and the exit status from kubectl rollout is 0 (success):echo $? 0 Failed DeploymentYour Deployment may get stuck trying to deploy its newest ReplicaSet without ever completing.",
+        "80/TCP QoS Tier: cpu:      BestEffort memory:   BestEffort Environment Variables: No volumes. Rolling Back to a Previous RevisionFollow the steps given below to rollback the Deployment from the current version to the previous version, which is version 2.Now you've decided to undo the current rollout and rollback to the previous revision:kubectl rollout undo deployment/nginx-deployment The output is similar to this:deployment.apps/nginx-deployment rolled back Alternatively, you can rollback to a specific revision by specifying it with --to-revision:kubectl rollout undo deployment/nginx-deployment --to-revision=2 The output is similar to this:deployment.apps/nginx-deployment rolled back For more details about rollout related commands, read kubectl rollout.The Deployment is now rolled back to a previous stable revision. As you can see, a DeploymentRollback event for rolling back to revision 2 is generated from Deployment controller.Check if the rollback was successful and the Deployment is running as expected, run:kubectl get deployment nginx-deployment The output is similar to this:NAME\nREADY   UP-TO-DATE   AVAILABLE   AGE nginx-deployment   3/3     3            3           30m Get the description of the Deployment:kubectl describe deployment nginx-deployment The output is similar to this:Name:\nnginx-deployment Namespace:              default CreationTimestamp:      Sun, 02 Sep 2018 18:17:55 -0500 Labels:                 app=nginx Annotations:            deployment.kubernetes.io/revision=4 Selector:               app=nginx Replicas:               3 desired | 3 updated | 3 total | 3 available | 0 unavailable StrategyType:           RollingUpdate MinReadySeconds:        0 RollingUpdateStrategy:  25% max unavailable, 25% max surge Pod Template: Labels:  app=nginx Containers: nginx: Image:        nginx:1.16.1 Port:         80/TCP Host Port:    0/TCP Environment: Mounts: Volumes: Conditions: Type           Status  Reason",
+        "This can occur due to some of the following factors:Insufficient quotaReadiness probe failuresImage pull errorsInsufficient permissionsLimit rangesApplication runtime misconfigurationOne way you can detect this condition is to specify a deadline parameter in your Deployment spec: (.spec.progressDeadlineSeconds). .spec.progressDeadlineSeconds denotes the number of seconds the Deployment controller waits before indicating (in the Deployment status) that the Deployment progress has stalled.The following kubectl command sets the spec with progressDeadlineSeconds to make the controller report lack of progress of a rollout for a Deployment after 10 minutes:kubectl patch deployment/nginx-deployment -p '{\"spec\":{\"progressDeadlineSeconds\":600}}' The output is similar to this:deployment.apps/nginx-deployment patched Once the deadline has been exceeded, the Deployment controller adds a DeploymentCondition with the following attributes to the Deployment's .status.conditions:type: Progressingstatus: \"False\"reason: ProgressDeadlineExceededThis condition can also fail early and is then set to status value of \"False\" due to reasons as ReplicaSetCreateError. Also, the deadline is not taken into account anymore once the Deployment rollout completes.See the Kubernetes API conventions for more information on status conditions.Note:Kubernetes takes no action on a stalled Deployment other than to report a status condition with reason: ProgressDeadlineExceeded. Higher level orchestrators can take advantage of it and act accordingly, for example, rollback the Deployment to its previous version.Note:If you pause a Deployment rollout, Kubernetes does not check progress against your specified deadline. You can safely pause a Deployment rollout in the middle of a rollout and resume without triggering the condition for exceeding the deadline.You may experience transient errors with your Deployments, either due to a low timeout that you have set or due to any other kind of error that can be treated as transient. For example, let's suppose you have insufficient quota. If you describe the Deployment you will notice the following section:kubectl describe deployment nginx-deployment The output is similar to this:<...> Conditions: Type\nStatus  Reason",
+        "This means that the new revision is created if and only if the Deployment's Pod template (.spec.template) is changed, for example if you update the labels or container images of the template. Other updates, such as scaling the Deployment, do not create a Deployment revision, so that you can facilitate simultaneous manual- or auto-scaling. This means that when you roll back to an earlier revision, only the Deployment's Pod template part is rolled back.Suppose that you made a typo while updating the Deployment, by putting the image name as nginx:1.161 instead of nginx:1.16.1:kubectl set image deployment/nginx-deployment nginx=nginx:1.161 The output is similar to this:deployment.apps/nginx-deployment image updated The rollout gets stuck. You can verify it by checking the rollout status:kubectl rollout status deployment/nginx-deployment The output is similar to this:Waiting for rollout to finish: 1 out of 3 new replicas have been updated... Press Ctrl-C to stop the above rollout status watch. For more information on stuck rollouts, read more here.You see that the number of old replicas (adding the replica count from nginx-deployment-1564180365 and nginx-deployment-2035384211) is 3, and the number of new replicas (from nginx-deployment-3066724191) is 1.kubectl get rs The output is similar to this:NAME\nDESIRED   CURRENT   READY   AGE nginx-deployment-1564180365   3         3         3       25s nginx-deployment-2035384211   0         0         0       36s nginx-deployment-3066724191   1         1         0       6s Looking at the Pods created, you see that 1 Pod created by new ReplicaSet is stuck in an image pull loop.kubectl get pods The output is similar to this:NAME",
+        "READY     STATUS             RESTARTS   AGE nginx-deployment-1564180365-70iae   1/1       Running            0          25s nginx-deployment-1564180365-jbqqo   1/1       Running            0          25s nginx-deployment-1564180365-hysrc   1/1       Running            0          25s nginx-deployment-3066724191-08mng   0/1       ImagePullBackOff   0          6s Note:The Deployment controller stops the bad rollout automatically, and stops scaling up the new ReplicaSet. This depends on the rollingUpdate parameters (maxUnavailable specifically) that you have specified. Kubernetes by default sets the value to 25%.Get the description of the Deployment:kubectl describe deployment The output is similar to this:Name:           nginx-deployment Namespace:      default CreationTimestamp:  Tue, 15 Mar 2016 14:48:04 -0700 Labels:         app=nginx Selector:       app=nginx Replicas:       3 desired | 1 updated | 4 total | 3 available | 1 unavailable StrategyType:       RollingUpdate MinReadySeconds:    0 RollingUpdateStrategy:  25% max unavailable, 25% max surge Pod Template: Labels:  app=nginx Containers: nginx: Image:        nginx:1.161 Port:         80/TCP Host Port:    0/TCP Environment: Mounts: Volumes: Conditions: Type           Status  Reason\nAvailable      True    MinimumReplicasAvailable Progressing    True    ReplicaSetUpdated OldReplicaSets:     nginx-deployment-1564180365 (3/3 replicas created) NewReplicaSet:      nginx-deployment-3066724191 (1/1 replicas created) Events: FirstSeen LastSeen    Count   From                    SubObjectPath   Type        Reason              Message"
+      ],
+      "context_sources": [
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__workloads__controllers__deployment.txt"
+      ],
+      "context_source_names": [
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__workloads__controllers__deployment.txt"
+      ],
+      "latency_ms": 72514.7,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 0.5,
+        "matched": [
+          "concepts__workloads__controllers__deployment.txt"
+        ]
+      },
+      "tokens_used": 6770,
+      "confidence": 1.0,
+      "crag_action": null,
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 1.0,
+      "unsupported_claims": [],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0004
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 0.7083,
+        "answer_relevancy": 0.9773,
+        "context_precision": 1.0,
+        "context_recall": 0.5
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    }
+  ],
+  "skipped": [],
+  "errors": [],
+  "aggregate": {
+    "n_evaluated": 5,
+    "n_skipped": 0,
+    "n_errors": 0,
+    "faithfulness": 0.895,
+    "context_precision": 0.667,
+    "context_recall": 0.7,
+    "answer_relevancy": 0.944,
+    "source_overlap": 0.7,
+    "forbidden_violations": 0,
+    "latency_ms": 80826.76,
+    "intent_accuracy": 1.0,
+    "sql_keyword_match_rate": null,
+    "answer_cache_hit_rate": 0.0,
+    "sql_result_cache_hit_rate": null,
+    "block_rate": null,
+    "false_block_rate": 0.0,
+    "grounding_score": 1.0,
+    "grounding_warned": 0,
+    "grounding_replaced": 0,
+    "cost_saved_usd": 0.0
+  }
+}

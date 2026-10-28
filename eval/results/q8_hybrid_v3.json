@@ -1,0 +1,201 @@
+{
+  "profile": "hybrid",
+  "flags": {
+    "search_mode": "hybrid",
+    "top_k": 5,
+    "enable_rerank": false,
+    "enable_hyde": false,
+    "enable_crag": false,
+    "enable_self_reflective": false
+  },
+  "timestamp": "20261027T222454Z",
+  "git_commit": "28575b7",
+  "questions_file": "goldens_q8.yaml",
+  "filter": null,
+  "judge_model": "qwen-3.8-27b",
+  "judge_context": "source+text",
+  "answer_relevancy_strictness": 1,
+  "answer_model": "gpt-oss-120b",
+  "pipeline": {
+    "grader_model": "gpt-oss-120b",
+    "reasoning_effort": "low",
+    "rrf_k": 60,
+    "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    "reranker_max_length": 256,
+    "reranker_initial_top_k": 20,
+    "hyde_num_hypotheses": 3,
+    "hyde_sparse_query": "question+passages",
+    "crag_relevance_threshold": 0.7,
+    "crag_ambiguous_threshold": 0.5,
+    "reflection_min_score": 0.8,
+    "max_reflection_retries": 2,
+    "grounding_enabled": true,
+    "grounding_pass_score": 0.8,
+    "grounding_warn_score": 0.5,
+    "security_models_enabled": true,
+    "prompt_injection_threshold": 0.9,
+    "toxicity_threshold": 0.75,
+    "output_toxicity_threshold": 0.5
+  },
+  "invoker": "agent",
+  "cache": {
+    "enabled": false,
+    "cleared_before_run": false,
+    "stats": {
+      "enabled": false,
+      "backend": "redis+memory",
+      "memory_entries": 0,
+      "tiers": {
+        "intent": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "embedding": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "rag_answer": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "sql_gen": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "sql_result": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        }
+      }
+    }
+  },
+  "rows": [
+    {
+      "id": "q-008",
+      "question": "Find the documentation that mentions 'progressDeadlineSeconds'",
+      "intent": "rag",
+      "demonstrates_feature": "hybrid",
+      "golden_sources": [
+        "concepts__workloads__controllers__deployment.txt"
+      ],
+      "golden_answer_keywords": [
+        "progressDeadlineSeconds",
+        "deadline",
+        "Progressing"
+      ],
+      "answer": "The documentation that mentions **`progressDeadlineSeconds`** is the file **\u201cconcepts__workloads__controllers__deployment.txt\u201d** (Document\u202fID\u202f1). It describes how `.spec.progressDeadlineSeconds` sets the deadline for the Deployment controller to report stalled progress and provides an example `kubectl patch` command that sets this field.",
+      "sources": [
+        "concepts__workloads__controllers__deployment.txt",
+        "Introduction to Debugging the FreeBSD Kernel -BSDCan 2008.pdf",
+        "Doxygen Quick Reference (2013).pdf",
+        "Solaris 10 System Administration Guide - Solaris Fibre Channel Storage Configuration and Multipathing Support Guide.pdf",
+        "Doxygen Quick Reference.pdf"
+      ],
+      "contexts": [
+        "This can occur due to some of the following factors:Insufficient quotaReadiness probe failuresImage pull errorsInsufficient permissionsLimit rangesApplication runtime misconfigurationOne way you can detect this condition is to specify a deadline parameter in your Deployment spec: (.spec.progressDeadlineSeconds). .spec.progressDeadlineSeconds denotes the number of seconds the Deployment controller waits before indicating (in the Deployment status) that the Deployment progress has stalled.The following kubectl command sets the spec with progressDeadlineSeconds to make the controller report lack of progress of a rollout for a Deployment after 10 minutes:kubectl patch deployment/nginx-deployment -p '{\"spec\":{\"progressDeadlineSeconds\":600}}' The output is similar to this:deployment.apps/nginx-deployment patched Once the deadline has been exceeded, the Deployment controller adds a DeploymentCondition with the following attributes to the Deployment's .status.conditions:type: Progressingstatus: \"False\"reason: ProgressDeadlineExceededThis condition can also fail early and is then set to status value of \"False\" due to reasons as ReplicaSetCreateError. Also, the deadline is not taken into account anymore once the Deployment rollout completes.See the Kubernetes API conventions for more information on status conditions.Note:Kubernetes takes no action on a stalled Deployment other than to report a status condition with reason: ProgressDeadlineExceeded. Higher level orchestrators can take advantage of it and act accordingly, for example, rollback the Deployment to its previous version.Note:If you pause a Deployment rollout, Kubernetes does not check progress against your specified deadline. You can safely pause a Deployment rollout in the middle of a rollout and resume without triggering the condition for exceeding the deadline.You may experience transient errors with your Deployments, either due to a low timeout that you have set or due to any other kind of error that can be treated as transient. For example, let's suppose you have insufficient quota. If you describe the Deployment you will notice the following section:kubectl describe deployment nginx-deployment The output is similar to this:<...> Conditions: Type\nStatus  Reason",
+        "Existing Documentation Existing Documentation\n- Kernel Debugging chapter of FreeBSD Developer's Handbook\n- Compiling a Debug Kernel\n- Invoking DDB, kgdb\n- ddb(4) Manual Page\n- GDB Documentation",
+        "Structural Indicators\n\\addtogroup <l> (t) adds to a group, enclose in open-close pairs. \\callgraph generates a call graph for function or method \\callergraph generates a caller graph for function or method \\category documentation block for a class category (Objective-C only). \\class <c> [<f>] [<n>]documents the class c, header file f and header name n can be included. \\def <name> documents the name #define macro \\defgroup <l> ''<t>'' defines a module group with a label l and title t. \\enum <name> documents the name enumeration \\example <file> a documentation block for an example contained in file. \\file <name> a documentation block for file name \\fn <sig> documents the function with signature sig \\hideinitializer hides the default value of a #define \\ingroup <l1> [<l2>] adds documentation to the l1 group, multiple groups can be used. \\interface <n> documentation block for interface n \\internal all text following this is suppressed to the end of the comment block. \\mainpage (t) the main or index page documentation block. \\name (header) a member group documentation block. \\namespace <n> a documenation block for namesapce n \\nosubgrouping turns off sub-gropuing for a class. \\overload (s) used to document an overloaded function with signature s \\package <n>) a documentation block for package n \\page <n> (t) indicates a page group documentation block with label n and title t \\property (q) documentation for global or class property q \\protocol (f) documentation block for a protocol (Objective-C only). \\relates <n> used to relate non-member functions to classes \\relatesalso <n> similar to \\relates \\showinitializer shows the default value of a #define \\struct <n> documentation block for struct n \\typedef (t) documentation block for typedef t \\union <n> documentation block for union n \\var (v) documentation block for variable v \\weakgroup <n> equivalent to \\addtogroup but has lower priority when resolving group\nconflicts.",
+        "Accessing Sun Documentation\nYou can view, print, or purchase a broad selection of Sun documentation, including localized versions, at: http://www.sun.com/documentation",
+        "Structural Indicators\n\\addtogroup <l> (t) adds to a group, enclose in open-close pairs. \\callgraph generates a call graph for function or method \\callergraph generates a caller graph for function or method \\category documentation block for a class category (Objective-C only). \\class <c> [<f>] [<n>]documents the class c, header file f and header name n can be included. \\def <name> documents the name #define macro \\defgroup <l> ''<t>'' defines a module group with a label l and title t. \\enum <name> documents the name enumeration \\example <file> a documentation block for an example contained in file. \\file <name> a documentation block for file name \\fn <sig> documents the function with signature sig \\hideinitializer hides the default value of a #define \\ingroup <l1> [<l2>] adds documentation to the l1 group, multiple groups can be used. \\interface <n> documentation block for interface n \\internal all text following this is suppressed to the end of the comment block. \\mainpage (t) the main or index page documentation block. \\name (header) a member group documentation block. \\namespace <n> a documenation block for namesapce n \\nosubgrouping turns off sub-gropuing for a class. \\overload (s) used to document an overloaded function with signature s \\package <n>) a documentation block for package n \\page <n> (t) indicates a page group documentation block with label n and title t \\property (q) documentation for global or class property q \\protocol (f) documentation block for a protocol (Objective-C only). \\relates <n> used to relate non-member functions to classes \\relatesalso <n> similar to \\relates \\showinitializer shows the default value of a #define \\struct <n> documentation block for struct n \\typedef (t) documentation block for typedef t \\union <n> documentation block for union n \\var (v) documentation block for variable v \\weakgroup <n> equivalent to \\addtogroup but has lower priority when resolving group\nconflicts."
+      ],
+      "context_sources": [
+        "concepts__workloads__controllers__deployment.txt",
+        "Introduction to Debugging the FreeBSD Kernel -BSDCan 2008.pdf",
+        "Doxygen Quick Reference (2013).pdf",
+        "Solaris 10 System Administration Guide - Solaris Fibre Channel Storage Configuration and Multipathing Support Guide.pdf",
+        "Doxygen Quick Reference.pdf"
+      ],
+      "context_source_names": [
+        "concepts__workloads__controllers__deployment.txt",
+        "Introduction to Debugging the FreeBSD Kernel -BSDCan 2008.pdf",
+        "Doxygen Quick Reference (2013).pdf",
+        "Solaris 10 System Administration Guide - Solaris Fibre Channel Storage Configuration and Multipathing Support Guide.pdf",
+        "Doxygen Quick Reference.pdf"
+      ],
+      "latency_ms": 78376.1,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "concepts__workloads__controllers__deployment.txt"
+        ]
+      },
+      "tokens_used": 4630,
+      "confidence": 1.0,
+      "crag_action": null,
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 1.0,
+      "unsupported_claims": [],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0004
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 0.75,
+        "answer_relevancy": 0.9352,
+        "context_precision": 1.0,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    }
+  ],
+  "skipped": [],
+  "errors": [],
+  "aggregate": {
+    "n_evaluated": 1,
+    "n_skipped": 0,
+    "n_errors": 0,
+    "faithfulness": 0.75,
+    "context_precision": 1.0,
+    "context_recall": 1.0,
+    "answer_relevancy": 0.935,
+    "source_overlap": 1.0,
+    "forbidden_violations": 0,
+    "latency_ms": 78376.1,
+    "intent_accuracy": 1.0,
+    "sql_keyword_match_rate": null,
+    "answer_cache_hit_rate": 0.0,
+    "sql_result_cache_hit_rate": null,
+    "block_rate": null,
+    "false_block_rate": 0.0,
+    "grounding_score": 1.0,
+    "grounding_warned": 0,
+    "grounding_replaced": 0,
+    "cost_saved_usd": 0.0
+  }
+}

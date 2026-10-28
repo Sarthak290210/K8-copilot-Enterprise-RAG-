@@ -84,5 +84,12 @@ async def test_bad_hypotheses_are_filtered(fakes, response):
     assert hypotheses in ([], ["ok"])
 
 
+def test_sparse_query_joins_question_and_passages():
+    retriever = hyde.HyDERetriever()
+    assert retriever.sparse_query("q") == "q"  # no passages (yet, or generation failed)
+    retriever.hypotheses = ["Set a ResourceQuota.", "Use a LimitRange."]
+    assert retriever.sparse_query("q") == "q Set a ResourceQuota. Use a LimitRange."
+
+
 def test_normalize_text():
     assert hyde._normalize_text("  Hello \n  WORLD ") == "hello world"

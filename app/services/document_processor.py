@@ -9,7 +9,11 @@ from docling.datamodel.pipeline_options import PdfPipelineOptions
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
 from docling_core.transforms.chunker.tokenizer.huggingface import HuggingFaceTokenizer
+from docling_core.types.doc.document import DoclingDocument
+from docling_core.types.doc.items.text import SectionHeaderItem, TextItem, TitleItem
+from docling_core.types.doc.labels import DocItemLabel
 from docling_core.types.io import DocumentStream
+from loguru import logger
 from transformers.models.auto.tokenization_auto import AutoTokenizer
 
 from app.config import settings
@@ -17,6 +21,11 @@ from app.config import settings
 SUPPORTED_EXTENSIONS = frozenset({".pdf", ".docx", ".html", ".htm", ".md", ".txt"})
 # bge-base reads at most 512 tokens; chunks are sized to fit exactly.
 MAX_CHUNK_TOKENS = 512
+# Docling's layout model sometimes labels whole paragraphs of a printed web page as a title or
+# section header (5 of the 12 corpus PDFs, up to 8k characters in one "header"). The chunker
+# uses headers only as headings, so that text never reached a chunk (rbac-good-practices.pdf:
+# 25% indexed). Real headings are short; the longest in the corpus PDFs is well under this.
+MAX_HEADING_CHARS = 200
 
 
 class DocumentProcessor:
@@ -59,6 +68,9 @@ class DocumentProcessor:
             document = self.converter.convert(file_path, page_range=(1, max_pages)).document
         else:
             document = self.converter.convert(file_path).document
+        demoted = demote_long_headings(document)
+        if demoted:
+            logger.info("{}: {} over-long heading(s) kept as body text", source, demoted)
 
         chunks = []
         for index, chunk in enumerate(self.chunker.chunk(document)):
@@ -78,6 +90,24 @@ class DocumentProcessor:
                 }
             )
         return chunks
+
+
+def demote_long_headings(document: DoclingDocument) -> int:
+    """Turn titles / section headers longer than MAX_HEADING_CHARS into body text, in place.
+
+    The chunker treats TitleItem / SectionHeaderItem as headings (by type), so each one is
+    replaced by a TextItem with the same fields; references stay valid (same self_ref, same
+    position in document.texts). Returns how many were changed.
+    """
+    changed = 0
+    for index, item in enumerate(document.texts):
+        if isinstance(item, TitleItem | SectionHeaderItem) and len(item.text) > MAX_HEADING_CHARS:
+            fields = {
+                name: getattr(item, name) for name in TextItem.model_fields if name != "label"
+            }
+            document.texts[index] = TextItem(**fields, label=DocItemLabel.TEXT)
+            changed += 1
+    return changed
 
 
 def _first_page(chunk: Any) -> int | None:

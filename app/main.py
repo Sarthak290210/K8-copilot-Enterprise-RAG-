@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack, asynccontextmanager
@@ -12,6 +13,7 @@ from app.api import admin, auth, documents, query
 from app.config import settings
 from app.core.graph import build_graph
 from app.middleware.rate_limiter import get_redis_client
+from app.security import input_guard
 from app.services import llm_service, vector_store, web_search
 
 
@@ -58,6 +60,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             # Not fatal: the index builds on the first sparse/hybrid query instead.
             logger.warning("Could not warm the BM25 index ({})", type(exc).__name__)
         stack.callback(vector_store.invalidate_sparse_index)
+        # Phase 6: load the injection + toxicity models now (~12 s), not on the first question.
+        # A failure is logged; questions are then blocked if SECURITY_FAIL_CLOSED (default).
+        if settings.security_models_enabled:
+            ready = await asyncio.to_thread(input_guard.warm_up)
+            logger.info("Security models {}", "loaded" if ready else "UNAVAILABLE")
 
         app.state.redis = get_redis_client()
         if app.state.redis is not None:

@@ -1,0 +1,210 @@
+{
+  "notes": {
+    "run": "q-003 re-run with hybrid + HyDE (HyDE answer prompt, BM25 on question + HyDE passages), to fix the q-003 failure in naive_rag_v2.json.",
+    "result": "PASS: both expected documents retrieved (precision 1.0, recall 1.0, naive had 0 / 0), answer gives `kubectl logs --previous`, faithfulness 0.75, relevancy 0.70.",
+    "fixes": "naive_rag_v2.json (q-003 failed there: retrieval miss, dense search found only the Pod API reference)"
+  },
+  "profile": "hybrid+hyde",
+  "flags": {
+    "search_mode": "hybrid",
+    "top_k": 5,
+    "enable_rerank": false,
+    "enable_hyde": true,
+    "enable_crag": false,
+    "enable_self_reflective": false
+  },
+  "timestamp": "20261027T235756Z",
+  "git_commit": "28575b7",
+  "questions_file": "goldens_q3.yaml",
+  "filter": null,
+  "judge_model": "qwen-3.8-27b",
+  "judge_context": "source+text",
+  "answer_relevancy_strictness": 1,
+  "answer_model": "gpt-oss-120b",
+  "pipeline": {
+    "grader_model": "gpt-oss-120b",
+    "reasoning_effort": "low",
+    "rrf_k": 60,
+    "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    "reranker_max_length": 256,
+    "reranker_initial_top_k": 20,
+    "hyde_num_hypotheses": 3,
+    "hyde_sparse_query": "question+passages",
+    "crag_relevance_threshold": 0.7,
+    "crag_ambiguous_threshold": 0.5,
+    "reflection_min_score": 0.8,
+    "max_reflection_retries": 2,
+    "grounding_enabled": true,
+    "grounding_pass_score": 0.8,
+    "grounding_warn_score": 0.5,
+    "security_models_enabled": true,
+    "prompt_injection_threshold": 0.9,
+    "toxicity_threshold": 0.75,
+    "output_toxicity_threshold": 0.5
+  },
+  "invoker": "agent",
+  "cache": {
+    "enabled": false,
+    "cleared_before_run": false,
+    "stats": {
+      "enabled": false,
+      "backend": "redis+memory",
+      "memory_entries": 0,
+      "tiers": {
+        "intent": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "embedding": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "rag_answer": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "sql_gen": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "sql_result": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        }
+      }
+    }
+  },
+  "rows": [
+    {
+      "id": "q-003",
+      "question": "A container in my pod keeps crashing and restarting. How do I see what went wrong?",
+      "intent": "rag",
+      "demonstrates_feature": "baseline",
+      "golden_sources": [
+        "concepts__cluster-administration__logging.pdf",
+        "reference__kubectl__cheatsheet.txt"
+      ],
+      "golden_answer_keywords": [
+        "kubectl logs",
+        "previous",
+        "container"
+      ],
+      "answer": "To view the output that the container produced (including any messages that were written before it terminated), use the **kubectl logs** command.\n\n* If the pod has only one container, simply run:  \n\n```\nkubectl logs <pod‑name>\n```  \n\n* If the pod has multiple containers, specify the container with the **‑c** flag, e.g.:  \n\n```\nkubectl logs <pod‑name> -c <container‑name>\n```  \n\n* To see the logs from the previous instance of the container (the one that crashed), add the **--previous** option:  \n\n```\nkubectl logs <pod‑name> --previous\n```  \n\nThese commands retrieve the log streams that the container wrote to stdout (and, if needed, stderr) before it exited, allowing you to examine what was output prior to the crash.  \n\n(See the examples of using **kubectl logs** and the **--previous** flag in the logging concepts document [3].)",
+      "sources": [
+        "concepts__cluster-administration__logging.pdf",
+        "reference__kubectl__cheatsheet.txt",
+        "tutorials__kubernetes-basics__explore__explore-intro.pdf"
+      ],
+      "contexts": [
+        "Concepts › Cluster-Administration › Logging\nkind: Pod metadata: name: counter-err spec: containers: - name: count image: busybox:1.28 args: [/bin/sh, -c, 'i=0; while true; do echo \"$i: $(date)\"; echo \"$i: err\" >&2 ; i=$((i+1)); sleep 1; done'] To run this pod, use the following command:kubectl apply -f https://k8s.io/examples/debug/counter-pod-err.yaml To fetch only the stderr log stream, you can run:kubectl get --raw \"/api/v1/namespaces/default/pods/counter-err/log?stream=Stderr\" See the kubectl logs documentation for more details.How nodes handle container logsA container runtime handles and redirects any output generated to a containerized application's stdout and stderr streams. Different container runtimes implement this in different ways; however, the integration with the kubelet is standardized as the CRI logging format.By default, if a container restarts, the kubelet keeps one terminated container with its logs. If a pod is evicted from the node, all corresponding containers are also evicted, along with their logs.The kubelet makes logs available to clients via a special feature of the Kubernetes API. The usual way to access this is by running kubectl logs.Log rotationFEATURE STATE: Kubernetes v1.21 [stable]The kubelet is responsible for rotating container logs and managing the logging directory structure. The kubelet sends this information to the container runtime (using CRI), and the runtime writes the container logs to the given location.You can configure two kubelet configuration settings, containerLogMaxSize (default 10Mi) and containerLogMaxFiles (default 5), using the kubelet configuration file.",
+        "Concepts › Cluster-Administration › Logging\nIf your pod has multiple containers, specify which container's logs you want to access by appending a container name to the command, with a -c flag, like so:kubectl logs counter -c count Container log streamsFEATURE STATE: Kubernetes v1.32 [alpha](disabled by default)As an alpha feature, the kubelet can split out the logs from the two standard streams produced by a container: standard output and standard error. To use this behavior, you must enable the PodLogsQuerySplitStreams feature gate. With that feature gate enabled, Kubernetes 1.36 allows access to these log streams directly via the Pod API. You can fetch a specific stream by specifying the stream name (either Stdout or Stderr), using the stream query string. You must have access to read the log subresource of that Pod.To demonstrate this feature, you can create a Pod that periodically writes text to both the standard output and error stream.debug/counter-pod-err.yaml\napiVersion: v1",
+        "Concepts › Cluster-Administration › Logging\nLogging Architecture | Kubernetes Logging ArchitectureApplication logs can help you understand what is happening inside your application. The logs are particularly useful for debugging problems and monitoring cluster activity. Most modern applications have some kind of logging mechanism. Likewise, container engines are designed to support logging. The easiest and most adopted logging method for containerized applications is writing to standard output and standard error streams.However, the native functionality provided by a container engine or runtime is usually not enough for a complete logging solution.For example, you may want to access your application's logs if a container crashes, a pod gets evicted, or a node dies.In a cluster, logs should have a separate storage and lifecycle independent of nodes, pods, or containers. This concept is called cluster-level logging.Cluster-level logging architectures require a separate backend to store, analyze, and query logs. Kubernetes does not provide a native storage solution for log data. Instead, there are many logging solutions that integrate with Kubernetes. The following sections describe how to handle and store logs on nodes.Pod and container logsKubernetes captures logs from each container in a running Pod.This example uses a manifest for a Pod with a container that writes text to the standard output stream, once per second.debug/counter-pod.yaml apiVersion: v1 kind: Pod metadata: name: counter spec: containers: - name: count image: busybox:1.28 args: [/bin/sh, -c, 'i=0; while true; do echo \"$i: $(date)\"; i=$((i+1)); sleep 1; done'] To run this pod, use the following command:kubectl apply -f https://k8s.io/examples/debug/counter-pod.yaml The output is:pod/counter created To fetch the logs, use the kubectl logs command, as follows:kubectl logs counter The output is similar to:0: Fri Apr 1 11:42:23 UTC 2022 1: Fri Apr 1 11:42:24 UTC 2022 2: Fri Apr 1 11:42:25 UTC 2022 You can use kubectl logs --previous to retrieve logs from a previous instantiation of a container.",
+        "Delete all pods matching the awk pattern1 or pattern2\n# dump Pod logs for a Deployment (single-container case) kubectl logs deploy/my-deployment -c my-container         # dump Pod logs for a Deployment (multi-container case)\nkubectl port-forward svc/my-service 5000                  # listen on local port 5000 and forward to port 5000 on Service backend kubectl port-forward svc/my-service 5000:my-service-port  # listen on local port 5000 and forward to Service target port with name\nkubectl port-forward deploy/my-deployment 5000:6000       # listen on local port 5000 and forward to port 6000 on a Pod created by kubectl exec deploy/my-deployment -- ls                   # run command in first Pod and first container in Deployment (single- or multi-container cases) Interacting with Nodes and clusterkubectl cordon my-node                                                # Mark my-node as unschedulable kubectl drain my-node                                                 # Drain my-node in preparation for maintenance kubectl uncordon my-node                                              # Mark my-node as schedulable kubectl top node                                                      # Show metrics for all nodes kubectl top node my-node                                              # Show metrics for a given node kubectl cluster-info                                                  # Display addresses of the master and services kubectl cluster-info dump                                             # Dump current cluster state to stdout kubectl cluster-info dump --output-directory=/path/to/cluster-state   # Dump current cluster state to /path/to/cluster-state",
+        "Tutorials › Kubernetes-Basics › Explore › Explore-Intro\nWe'll use the kubectl get command and look for existing Pods:kubectl get pods If no pods are running, please wait a couple of seconds and list the Pods again. You can continue once you see one Pod running.Next, to view what containers are inside that Pod and what images are used to build those containers we run the kubectl describe pods command:kubectl describe pods We see here details about the Pod's container: IP address, the ports used and a list of events related to the lifecycle of the Pod.The output of the describe subcommand is extensive and covers some concepts that we didn't explain yet, but don't worry, they will become familiar by the end of this tutorial.Note:The describe subcommand can be used to get detailed information about most of the Kubernetes primitives, including Nodes, Pods, and Deployments. The describe output is designed to be human readable, not to be scripted against.Show the app in the terminalRecall that Pods are running in an isolated, private network - so we need to proxy access to them so we can debug and interact with them. To do this, we'll use the kubectl proxy command to run a proxy in a second terminal. Open a new terminal window, and in that new terminal, run:kubectl proxy Now again, we'll get the Pod name and query that pod directly through the proxy. To get the Pod name and store it in the POD_NAME environment variable:export POD_NAME=\"$(kubectl get pods -o go-template --template '{{range .items}}{{.metadata.name}}{{\"\\n\"}}{{end}}')\" echo Name of the Pod: $POD_NAME To see the output of our application, run a curl request:curl http://localhost:8001/api/v1/namespaces/default/pods/$POD_NAME:8080/proxy/ The URL is the route to the API of the Pod.Note:We don't need to specify the container name, because we only have one container inside the pod.Executing commands on the containerWe can execute commands directly on the container once the Pod is up and running."
+      ],
+      "context_sources": [
+        "concepts__cluster-administration__logging.pdf",
+        "concepts__cluster-administration__logging.pdf",
+        "concepts__cluster-administration__logging.pdf",
+        "reference__kubectl__cheatsheet.txt",
+        "tutorials__kubernetes-basics__explore__explore-intro.pdf"
+      ],
+      "context_source_names": [
+        "concepts__cluster-administration__logging.pdf",
+        "concepts__cluster-administration__logging.pdf",
+        "concepts__cluster-administration__logging.pdf",
+        "reference__kubectl__cheatsheet.txt",
+        "tutorials__kubernetes-basics__explore__explore-intro.pdf"
+      ],
+      "latency_ms": 142316.5,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "concepts__cluster-administration__logging.pdf",
+          "reference__kubectl__cheatsheet.txt"
+        ]
+      },
+      "tokens_used": 11938,
+      "confidence": 1.0,
+      "crag_action": null,
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [
+        "Inspect the pod's status with `kubectl describe pod <pod-name>` to view recent events and the container's exit code. The description will include the `State` and `Last State` fields, which indicate why the container terminated.",
+        "Retrieve the container logs using `kubectl logs <pod-name> -c <container-name> --previous` to see the output from the last crashed instance. If the pod has multiple containers, specify the `-c` flag; the `--previous` flag shows logs from the terminated container.",
+        "If the logs are insufficient, enable a higher log level or attach a debugger by exec-ing into a running replica with `kubectl exec -it <pod-name> -c <container-name> -- /bin/sh`. You can then inspect the filesystem, environment variables, and core dump files for deeper troubleshooting."
+      ],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 1.0,
+      "unsupported_claims": [],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0004
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 0.75,
+        "answer_relevancy": 0.6991,
+        "context_precision": 1.0,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    }
+  ],
+  "skipped": [],
+  "errors": [],
+  "aggregate": {
+    "n_evaluated": 1,
+    "n_skipped": 0,
+    "n_errors": 0,
+    "faithfulness": 0.75,
+    "context_precision": 1.0,
+    "context_recall": 1.0,
+    "answer_relevancy": 0.699,
+    "source_overlap": 1.0,
+    "forbidden_violations": 0,
+    "latency_ms": 142316.5,
+    "intent_accuracy": 1.0,
+    "sql_keyword_match_rate": null,
+    "answer_cache_hit_rate": 0.0,
+    "sql_result_cache_hit_rate": null,
+    "block_rate": null,
+    "false_block_rate": 0.0,
+    "grounding_score": 1.0,
+    "grounding_warned": 0,
+    "grounding_replaced": 0,
+    "cost_saved_usd": 0.0
+  }
+}

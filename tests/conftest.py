@@ -19,6 +19,9 @@ os.environ["HF_HUB_OFFLINE"] = "1"
 # answer from one test never leaks into another; doc-dedup records go to a temp folder.
 os.environ["CACHE_ENABLED"] = "false"
 os.environ["LOCAL_STORAGE_DIR"] = tempfile.mkdtemp(prefix="k8-copilot-test-storage-")
+# Phase 6: no llm-guard models and no grounding grader call unless a test fakes them.
+os.environ["SECURITY_MODELS_ENABLED"] = "false"
+os.environ["GROUNDING_ENABLED"] = "false"
 
 import pytest  # noqa: E402
 

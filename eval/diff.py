@@ -5,6 +5,7 @@ uv run python -m eval.diff eval/results/A.json eval/results/B.json
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -53,7 +54,19 @@ def _arrow(key: str, delta: float | None) -> str:
         return ""
     # Lower is better for these two; higher is better for everything else.
     better = delta < 0 if key in ("forbidden_violations", "latency_ms") else delta > 0
-    return "▲" if better else "▼"
+    return SYMBOLS["up"] if better else SYMBOLS["down"]
+
+
+# The Windows console (cp1252) can't print ▲ ▼ →, which crashed this script: fall back to
+# ASCII when the output encoding can't take them.
+SYMBOLS = {"up": "▲", "down": "▼", "to": "→"}
+
+
+def _use_ascii_if_needed() -> None:
+    try:
+        "".join(SYMBOLS.values()).encode(sys.stdout.encoding or "utf-8")
+    except UnicodeEncodeError:
+        SYMBOLS.update(up="(better)", down="(worse)", to="->")
 
 
 def _fmt(value: Any) -> str:
@@ -66,17 +79,19 @@ def main() -> None:
     parser.add_argument("b", type=Path)
     args = parser.parse_args()
 
+    _use_ascii_if_needed()
+    to = SYMBOLS["to"]
     a, b = load_result(args.a), load_result(args.b)
     result = diff_results(a, b)
-    print(f"\n## `{a['profile']}` ({args.a.name}) → `{b['profile']}` ({args.b.name})\n")
+    print(f"\n## `{a['profile']}` ({args.a.name}) {to} `{b['profile']}` ({args.b.name})\n")
     print("| metric | A | B | delta |")
     print("|---|---|---|---|")
     for key, m in result["metrics"].items():
         print(
             f"| {key} | {_fmt(m['a'])} | {_fmt(m['b'])} | {_fmt(m['delta'])} {_arrow(key, m['delta'])} |"
         )
-    print(f"\nFlipped fail → pass: {', '.join(result['fail_to_pass']) or 'none'}")
-    print(f"Flipped pass → fail: {', '.join(result['pass_to_fail']) or 'none'}")
+    print(f"\nFlipped fail {to} pass: {', '.join(result['fail_to_pass']) or 'none'}")
+    print(f"Flipped pass {to} fail: {', '.join(result['pass_to_fail']) or 'none'}")
 
 
 if __name__ == "__main__":

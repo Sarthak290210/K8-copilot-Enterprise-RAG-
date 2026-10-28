@@ -144,6 +144,55 @@ async def test_hybrid_search_with_a_custom_dense_retriever(client):
     assert {"hyde.txt", "sparse-only.txt"} <= {h.source for h in hits}
 
 
+async def test_hybrid_search_bm25_uses_the_sparse_query_built_after_dense(client):
+    """With HyDE, BM25 searches text written during the dense search (question + passages)."""
+    docs = [chunk("quota.txt", 0, "ResourceQuota limits namespace CPU"), *filler(6)]
+    await vector_store.upsert_chunks(docs, [vec(0.0, 1.0)] + [vec(0.0, 0.0, 1.0)] * 6, client)
+    state = {"passages": []}
+
+    async def dense(depth):
+        state["passages"] = ["Set a ResourceQuota"]  # what HyDE writes during its search
+        return [RetrievedChunk(text="from hyde", source="hyde.txt", score=0.9, metadata={})]
+
+    hits = await vector_store.hybrid_search(
+        "tenant hogging the shared computer",  # no word in common with quota.txt
+        None,
+        top_k=3,
+        client=client,
+        dense_search=dense,
+        sparse_query=lambda: " ".join(["tenant hogging the shared computer", *state["passages"]]),
+    )
+    assert "quota.txt" in {h.source for h in hits}  # found only through the passage's terms
+    plain = await vector_store.hybrid_search(
+        "tenant hogging the shared computer", None, top_k=3, client=client, dense_search=dense
+    )
+    assert "quota.txt" not in {h.source for h in plain}
+
+
+async def test_hybrid_search_caps_chunks_per_document(client):
+    """max_per_source picks top_k from the fused list with at most that many per document."""
+    docs = [
+        chunk("long.pdf", i, f"CrashLoopBackOff CrashLoopBackOff restart {i}") for i in range(4)
+    ]
+    # ranked below every long.pdf chunk by both searches
+    docs += [
+        chunk("other.txt", 0, "CrashLoopBackOff seen in the probe output of a node"),
+        *filler(6),
+    ]
+    vectors = [vec(1.0, 0.0)] * 4 + [vec(0.3, 1.0)] + [vec(0.0, 0.0, 1.0)] * 6
+    await vector_store.upsert_chunks(docs, vectors, client)
+    plain = await vector_store.hybrid_search(
+        "CrashLoopBackOff", vec(1.0, 0.0), top_k=3, client=client
+    )
+    capped = await vector_store.hybrid_search(
+        "CrashLoopBackOff", vec(1.0, 0.0), top_k=3, client=client, max_per_source=2
+    )
+    assert [h.source for h in plain].count("long.pdf") == 3
+    assert [h.source for h in capped].count("long.pdf") == 2 and "other.txt" in {
+        h.source for h in capped
+    }
+
+
 async def test_hybrid_search_needs_some_dense_input(client):
     with pytest.raises(ValueError, match="query_embedding or dense_search"):
         await vector_store.hybrid_search("q", None, client=client)

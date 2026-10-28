@@ -100,18 +100,23 @@ def seed_users(conn: psycopg.Connection) -> None:
 
 
 def _collect_files(subdir: str) -> list[Path]:
-    """Supported files under seed/docs/<subdir>, sorted (stable order across runs)."""
+    """Supported files under seed/docs/<subdir>, sorted (stable order across runs); none if the
+    folder doesn't exist (seed/docs isn't in git, so attack_data may be missing)."""
     from app.services.document_processor import SUPPORTED_EXTENSIONS
 
     folder = DOCS_DIR / subdir
+    if not folder.is_dir():
+        return []
     return sorted(
         p for p in folder.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_EXTENSIONS
     )
 
 
 def _select_corpus(noise_sample_size: int | str) -> tuple[list[Path], list[Path]]:
-    """All true_data files + a seeded random sample of noisy_data ("all" = every file)."""
-    signal = _collect_files("true_data")
+    """All true_data and attack_data files + a seeded random sample of noisy_data ("all" =
+    every file). attack_data (Phase 6) holds test documents with planted instructions, for the
+    indirect prompt-injection golden; it's ingested whole, like the signal docs."""
+    signal = _collect_files("true_data") + _collect_files("attack_data")
     noise = _collect_files("noisy_data")
     if noise_sample_size != "all" and int(noise_sample_size) < len(noise):
         noise = sorted(random.Random(NOISE_SEED).sample(noise, int(noise_sample_size)))

@@ -48,7 +48,8 @@ async def test_scores_four_criteria_and_averages_them(grader):
     assert result.issues == ["does not answer"]
     assert result.refined_question == "What is a Kubernetes Pod?"
     assert result.tokens_used == 300
-    assert "User's question: pods?" in grader["user"] and "[1] Pods are..." in grader["user"]
+    assert "User's question: pods?" in grader["user"]
+    assert "<<DOCUMENT id=1>>\nPods are..." in grader["user"]
     assert str(settings.reflection_min_score) in grader["system"]  # the bar is in the prompt
 
 

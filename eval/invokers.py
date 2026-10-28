@@ -4,7 +4,7 @@ import uuid
 from abc import ABC, abstractmethod
 from typing import Any
 
-from app.models import ChatResponse, RetrievedChunk
+from app.models import ChatResponse, ResponseMetadata, RetrievedChunk
 from app.services import rag_service
 
 # ServiceInvoker calls the RAG pipeline only, so it can't answer database questions.
@@ -40,7 +40,12 @@ class ServiceInvoker(Invoker):
 class AgentInvoker(Invoker):
     """The Phase 4 agent graph in-process (routing, Text2SQL, hybrid), with an in-memory
     checkpointer and **auto-approved** SQL: the eval measures answers, not the human step.
-    The golden's intent is not passed in: the router has to find it (intent_accuracy)."""
+    The golden's intent is not passed in: the router has to find it (intent_accuracy).
+
+    Phase 6: wrapped in the same security layers as the API (security/pipeline.py: input
+    guard + PII redaction before, moderation + redaction after; the token budget is per user,
+    so API only). A blocked question becomes a row whose answer is the block message and
+    whose `metadata.security.blocked` is the reason."""
 
     def __init__(self) -> None:
         from langgraph.checkpoint.memory import InMemorySaver
@@ -53,9 +58,17 @@ class AgentInvoker(Invoker):
         self, question: str, flags: dict[str, Any], intent: str
     ) -> tuple[ChatResponse, list[RetrievedChunk]]:
         from app.core.graph import resume_agent, run_agent
+        from app.security.pipeline import InputBlocked, screen_question, screen_response
 
+        try:
+            screened = await screen_question(question)
+        except InputBlocked as exc:
+            security = {"blocked": exc.reason, "guard_scores": exc.scores}
+            return ChatResponse(
+                answer=exc.message, metadata=ResponseMetadata(intent="blocked", security=security)
+            ), []
         query_id = uuid.uuid4()
-        result = await run_agent(self.graph, question, flags, query_id)
+        result = await run_agent(self.graph, screened.question, flags, query_id)
         if result.pending:
             before = result.response.metadata
             result = await resume_agent(self.graph, query_id, approved=True)
@@ -64,4 +77,4 @@ class AgentInvoker(Invoker):
             for tier, hit in before.cache_hits.items():
                 meta.cache_hits[tier] = meta.cache_hits.get(tier, False) or hit
             meta.cost_saved_usd = round(meta.cost_saved_usd + before.cost_saved_usd, 6)
-        return result.response, result.chunks
+        return await screen_response(result.response, screened), result.chunks

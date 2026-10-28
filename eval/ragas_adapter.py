@@ -118,6 +118,22 @@ def reference_from_keywords(keywords: list[str]) -> str:
     return ", ".join(keywords)
 
 
+def judge_contexts(row: dict[str, Any]) -> list[str]:
+    """Each chunk as the judge sees it (post_checks.JUDGE_CONTEXT "source+text"):
+    "Source: <name>" + its text.
+
+    The answer model sees every chunk's file name or URL; without it the judge rejected
+    correct statements like "progressDeadlineSeconds is documented in deployment.txt" (q-008
+    scored 0.00 three times). Older rows have only `context_sources`, where web results are
+    the marker "tavily_web"; rows whose sources don't line up get the bare text.
+    """
+    texts = row["contexts"]
+    sources = row.get("context_source_names") or row.get("context_sources") or []
+    if len(sources) != len(texts):
+        return list(texts)
+    return [f"Source: {source}\n{text}" for source, text in zip(sources, texts, strict=True)]
+
+
 def build_dataset(rows: list[dict[str, Any]]) -> EvaluationDataset:
     """Rows -> Ragas samples (user_input, response, retrieved_contexts, reference)."""
     return EvaluationDataset.from_list(
@@ -125,7 +141,7 @@ def build_dataset(rows: list[dict[str, Any]]) -> EvaluationDataset:
             {
                 "user_input": row["question"],
                 "response": row["answer"],
-                "retrieved_contexts": row["contexts"],
+                "retrieved_contexts": judge_contexts(row),
                 "reference": reference_from_keywords(row["golden_answer_keywords"]),
             }
             for row in rows

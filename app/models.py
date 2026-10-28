@@ -1,5 +1,6 @@
 """Shapes of the data moving through the system (requests, retrieved chunks, answers)."""
 
+import re
 import uuid
 from typing import Any, Literal
 
@@ -7,6 +8,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 SEARCH_MODES = ("dense", "sparse", "hybrid")
 MAX_TOP_K = 20
+
+# L1 (Phase 6): control characters other than tab/newline, and absurd repetition (one character
+# 50+ times in a row, or one word 20+ times in a row) are rejected before anything else runs.
+_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_REPEATED_CHAR = re.compile(r"(.)\1{49,}", re.DOTALL)
+_REPEATED_WORD = re.compile(r"\b(\w+)\b(?:\W+\1\b){19,}", re.IGNORECASE)
 
 
 class RetrievedChunk(BaseModel):
@@ -63,6 +70,19 @@ class ReflectionResult(BaseModel):
     tokens_used: int = 0
 
 
+class GroundingResult(BaseModel):
+    """L10 hallucination guard (Phase 6): the answer's claims checked against its chunks."""
+
+    action: Literal["pass", "warn", "replaced", "skipped", "unavailable"] = "skipped"
+    score: float | None = None  # supported claims / all claims (None: no claims or not run)
+    claims: int = 0
+    unsupported_claims: list[str] = Field(default_factory=list)
+    invalid_citations: list[int] = Field(default_factory=list)  # [n] with no document n
+    tokens_used: int = 0
+    regenerated: bool = False  # the answer is the one rewrite (it grounded better)
+    first_score: float | None = None  # the first answer's score when a rewrite was tried
+
+
 class ResponseMetadata(BaseModel):
     intent: str = "rag"
     flags_used: dict[str, Any] = Field(default_factory=dict)
@@ -78,6 +98,10 @@ class ResponseMetadata(BaseModel):
     refined_question: str | None = None  # the question the returned answer was written for
     generated_sql: str | None = None  # Phase 4: the SQL that ran (sql / hybrid intents)
     sql_row_count: int | None = None
+    grounding: GroundingResult | None = None  # Phase 6 (L10)
+    # Phase 6: what the security layers did, e.g. {"input_action": "unchanged",
+    # "input_pii": ["email"], "output_pii": [], "guard_scores": {...}, "moderation": "ok"}
+    security: dict[str, Any] = Field(default_factory=dict)
 
 
 class PendingSQLBlock(BaseModel):
@@ -130,6 +154,19 @@ class QueryFlags(BaseModel):
 class QueryRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     flags: QueryFlags | None = None  # e.g. {"search_mode": "hybrid", "top_k": 5}
+
+    @field_validator("question")
+    @classmethod
+    def validate_question_content(cls, v: str) -> str:
+        """L1: strip, then reject empty, control characters and absurd repetition (422)."""
+        v = v.strip()
+        if not v:
+            raise ValueError("question is empty")
+        if _CONTROL_CHARS.search(v):
+            raise ValueError("question contains control characters")
+        if _REPEATED_CHAR.search(v) or _REPEATED_WORD.search(v):
+            raise ValueError("question contains excessive repetition")
+        return v
 
 
 class SqlExecuteRequest(BaseModel):

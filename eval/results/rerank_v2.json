@@ -1,0 +1,566 @@
+{
+  "profile": "hybrid+rerank",
+  "flags": {
+    "search_mode": "hybrid",
+    "top_k": 5,
+    "enable_rerank": true,
+    "enable_hyde": false,
+    "enable_crag": false,
+    "enable_self_reflective": false
+  },
+  "timestamp": "20261027T224827Z",
+  "git_commit": "28575b7",
+  "questions_file": "goldens_rerank.yaml",
+  "filter": null,
+  "judge_model": "qwen-3.8-27b",
+  "judge_context": "source+text",
+  "answer_relevancy_strictness": 1,
+  "answer_model": "gpt-oss-120b",
+  "pipeline": {
+    "grader_model": "gpt-oss-120b",
+    "reasoning_effort": "low",
+    "rrf_k": 60,
+    "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    "reranker_max_length": 256,
+    "reranker_initial_top_k": 20,
+    "hyde_num_hypotheses": 3,
+    "hyde_sparse_query": "question+passages",
+    "crag_relevance_threshold": 0.7,
+    "crag_ambiguous_threshold": 0.5,
+    "reflection_min_score": 0.8,
+    "max_reflection_retries": 2,
+    "grounding_enabled": true,
+    "grounding_pass_score": 0.8,
+    "grounding_warn_score": 0.5,
+    "security_models_enabled": true,
+    "prompt_injection_threshold": 0.9,
+    "toxicity_threshold": 0.75,
+    "output_toxicity_threshold": 0.5
+  },
+  "invoker": "agent",
+  "cache": {
+    "enabled": false,
+    "cleared_before_run": false,
+    "stats": {
+      "enabled": false,
+      "backend": "redis+memory",
+      "memory_entries": 0,
+      "tiers": {
+        "intent": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "embedding": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "rag_answer": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "sql_gen": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        },
+        "sql_result": {
+          "hits": 0,
+          "misses": 0,
+          "sets": 0,
+          "hit_rate": null
+        }
+      }
+    }
+  },
+  "rows": [
+    {
+      "id": "q-009",
+      "question": "How long does a rolling update take in Kubernetes?",
+      "intent": "rag",
+      "demonstrates_feature": "rerank",
+      "golden_sources": [
+        "concepts__workloads__controllers__deployment.txt"
+      ],
+      "golden_answer_keywords": [
+        "rolling update",
+        "maxSurge",
+        "maxUnavailable"
+      ],
+      "answer": "The provided documents describe how rolling updates work, the parameters that control the number of pods that can be added or removed during an update, and how to initiate an update, but none of them specify a fixed time duration for a rolling update. Therefore, the documents do not contain information about how long a rolling update takes in Kubernetes.",
+      "sources": [
+        "tutorials__kubernetes-basics__update__update-intro.txt",
+        "reference__kubernetes-api__workload-resources__deployment-v1.pdf",
+        "tutorials__kubernetes-basics__scale__scale-intro.html",
+        "concepts__workloads__controllers__deployment.txt"
+      ],
+      "contexts": [
+        "Performing a Rolling Update | Kubernetes Performing a Rolling UpdateObjectivesPerform a rolling update using kubectl.Before you beginThe shell commands in this tutorial use POSIX shell syntax, which is supported by the default shells on most Linux and macOS systems (for example, bash, zsh, or sh). Windows users must use a POSIX-compatible shell such as Windows Subsystem for Linux (WSL) or Git Bash to run the commands as written. Commands that use export, $(), and similar constructs are not compatible with PowerShell or the Windows Command Prompt.Updating an applicationRolling updates allow Deployments' update to take place with zero downtime by incrementally updating Pods instances with new ones.Users expect applications to be available all the time, and developers are expected to deploy new versions of them several times a day. In Kubernetes this is done with rolling updates. A rolling update allows a Deployment update to take place with zero downtime. It does this by incrementally replacing the current Pods with new ones. The new Pods are scheduled on Nodes with available resources, and Kubernetes waits for those new Pods to start before removing the old Pods.In the previous module we scaled our application to run multiple instances. This is a requirement for performing updates without affecting application availability. By default, the maximum number of Pods that can be unavailable during the update and the maximum number of new Pods that can be created, is one. Both options can be configured to either numbers or percentages (of Pods). In Kubernetes, updates are versioned and any Deployment update can be reverted to a previous (stable) version.Rolling updates overviewIf a Deployment is publicly exposed, the Service will send traffic only to Pods that can handle requests.This ensures users continue to access the application during an update.During a rolling update, this behavior keeps the application available by routing traffic only to Pods that are serving requests.",
+        "Deployment | Kubernetes\nPresent only if DeploymentStrategyType = RollingUpdate.Spec to control the desired behavior of rolling update.strategy.rollingUpdate.maxSurge (IntOrString)The maximum number of pods that can be scheduled above the desired number of pods. Value can be an absolute number (ex: 5) or a percentage of desired pods (ex: 10%). This can not be 0 if MaxUnavailable is 0. Absolute number is calculated from percentage by rounding up. Defaults to 25%. Example: when this is set to 30%, the new ReplicaSet can be scaled up immediately when the rolling update starts, such that the total number of old and new pods do not exceed 130% of desired pods. Once old pods have been killed, new ReplicaSet can be scaled up further, ensuring that total number of pods running at any time during the update is at most 130% of desired pods.IntOrString is a type that can hold an int32 or a string. When used in JSON or YAML marshalling and unmarshalling, it produces or consumes the inner type. This allows you to have, for example, a JSON field that can accept a name or number.strategy.rollingUpdate.maxUnavailable (IntOrString)The maximum number of pods that can be unavailable during the update. Value can be an absolute number (ex: 5) or a percentage of desired pods (ex: 10%). Absolute number is calculated from percentage by rounding down. This can not be 0 if MaxSurge is 0. Defaults to 25%. Example: when this is set to 30%, the old ReplicaSet can be scaled down to 70% of desired pods immediately when the rolling update starts. Once new pods are ready, old ReplicaSet can be scaled down further, followed by scaling up the new ReplicaSet, ensuring that the total number of pods available at all times during the update is at least 70% of desired pods.IntOrString is a type that can hold an int32 or a string. When used in JSON or YAML marshalling and unmarshalling, it produces or consumes the inner type. This allows you to have, for example, a JSON field that can accept a name or number.revisionHistoryLimit (int32)The number of old ReplicaSets to retain to allow rollback.",
+        "Rolling updates allow the following actions:Promote an application from one environment to another (via container image updates)Rollback to previous versionsContinuous Integration and Continuous Delivery of applications with zero downtimeIn the following interactive tutorial, we'll update our application to a new version, and also perform a rollback.Update the version of the appTo list your Deployments, run the get deployments subcommand:kubectl get deployments To list the running Pods, run the get pods subcommand:kubectl get pods To view the current image version of the app, run the describe pods subcommand and look for the Image field:kubectl describe pods To update the image of the application to version 2, use the set image subcommand, followed by the deployment name and the new image version:kubectl set image deployments/kubernetes-bootcamp kubernetes-bootcamp=docker.io/jocatalin/kubernetes-bootcamp:v2 The command notified the Deployment to use a different image for your app and initiated a rolling update. Check the status of the new Pods, and view the old one terminating with the get pods subcommand:kubectl get pods Verify an updateFirst, check that the service is running, as you might have deleted it in previous tutorial step, run describe services/kubernetes-bootcamp. If it's missing, you can create it again with:kubectl expose deployment/kubernetes-bootcamp --type=\"NodePort\" --port 8080 Create an environment variable called NODE_PORT that has the value of the Node port assigned:export NODE_PORT=\"$(kubectl get services/kubernetes-bootcamp -o go-template='{{(index .spec.ports 0).nodePort}}')\" echo \"NODE_PORT=$NODE_PORT\" Next, do a curl to the exposed IP and port:curl http://\"$(minikube ip):$NODE_PORT\" Every time you run the curl command, you will hit a different Pod.",
+        "Tutorials \u203a Kubernetes-Basics \u203a Scale \u203a Scale-Intro\n! Because you are using a Docker driver on darwin, the terminal needs to be open to run it.  \nThen use the given URL to access the app:curl 127.0.0.1:51082  \nScale DownTo scale down the Deployment to 2 replicas, run again the scale subcommand:kubectl scale deployments/kubernetes-bootcamp --replicas=2  \nList the Deployments to check if the change was applied with the get deployments subcommand:kubectl get deployments  \nThe number of replicas decreased to 2. List the number of Pods, with get pods:kubectl get pods -o wide  \nThis confirms that 2 Pods were terminated.What's nextTutorial  \nPerforming a Rolling Update.Learn more about ReplicaSet.Learn more about Autoscaling.FeedbackWas this page helpful?Yes  \nNoThanks for the feedback. If you have a specific, answerable question about how to use Kubernetes, ask it on  \nStack Overflow.  \nOpen an issue in the GitHub Repository if you want to  \nreport a problem  \nor  \nsuggest an improvement.Last modified March 12, 2026 at 3:33 PM PST: Clarify POSIX shell wording in prerequisites (5d98744874)",
+        "Deployments | Kubernetes DeploymentsA Deployment manages a set of Pods to run an application workload, usually one that doesn't maintain state.A Deployment provides declarative updates for Pods and ReplicaSets.You describe a desired state in a Deployment, and the Deployment Controller changes the actual state to the desired state at a controlled rate. You can define Deployments to create new ReplicaSets, or to remove existing Deployments and adopt all their resources with new Deployments.Note:Do not manage ReplicaSets owned by a Deployment. Consider opening an issue in the main Kubernetes repository if your use case is not covered below.Use CaseThe following are typical use cases for Deployments:Create a Deployment to rollout a ReplicaSet. The ReplicaSet creates Pods in the background. Check the status of the rollout to see if it succeeds or not.Declare the new state of the Pods by updating the PodTemplateSpec of the Deployment. A new ReplicaSet is created, and the Deployment gradually scales it up while scaling down the old ReplicaSet, ensuring Pods are replaced at a controlled rate. Each new ReplicaSet updates the revision of the Deployment.Rollback to an earlier Deployment revision if the current state of the Deployment is not stable. Each rollback updates the revision of the Deployment.Scale up the Deployment to facilitate more load.Pause the rollout of a Deployment to apply multiple fixes to its PodTemplateSpec and then resume it to start a new rollout.Use the status of the Deployment as an indicator that a rollout has stuck.Clean up older ReplicaSets that you don't need anymore.Creating a DeploymentThe following is an example of a Deployment. It creates a ReplicaSet to bring up three nginx Pods:controllers/nginx-deployment.yaml apiVersion: apps/v1 kind: Deployment metadata: name: nginx-deployment labels: app: nginx spec: replicas: 3 selector: matchLabels: app: nginx template: metadata: labels: app: nginx spec: containers: - name: nginx image: nginx:1.14.2 ports: - containerPort: 80 In this example:A Deployment named nginx-deployment is created, indicated by the .metadata.name field. This name will become the basis for the ReplicaSets and Pods which are created later."
+      ],
+      "context_sources": [
+        "tutorials__kubernetes-basics__update__update-intro.txt",
+        "reference__kubernetes-api__workload-resources__deployment-v1.pdf",
+        "tutorials__kubernetes-basics__update__update-intro.txt",
+        "tutorials__kubernetes-basics__scale__scale-intro.html",
+        "concepts__workloads__controllers__deployment.txt"
+      ],
+      "context_source_names": [
+        "tutorials__kubernetes-basics__update__update-intro.txt",
+        "reference__kubernetes-api__workload-resources__deployment-v1.pdf",
+        "tutorials__kubernetes-basics__update__update-intro.txt",
+        "tutorials__kubernetes-basics__scale__scale-intro.html",
+        "concepts__workloads__controllers__deployment.txt"
+      ],
+      "latency_ms": 70319.6,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "concepts__workloads__controllers__deployment.txt"
+        ]
+      },
+      "tokens_used": 5796,
+      "confidence": 1.0,
+      "crag_action": null,
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 1.0,
+      "unsupported_claims": [],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0005
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.9543,
+        "context_precision": 0.2,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    },
+    {
+      "id": "q-010",
+      "question": "When will my pod be ready to serve traffic?",
+      "intent": "rag",
+      "demonstrates_feature": "rerank",
+      "golden_sources": [
+        "tasks__configure-pod-container__configure-liveness-readiness-startup-probes.docx"
+      ],
+      "golden_answer_keywords": [
+        "readiness",
+        "probe",
+        "ready"
+      ],
+      "answer": "A pod is considered ready\u2014and therefore will start receiving traffic through Services\u2014once **all of its containers are ready** and any **readiness\u2011gate conditions are true**.  \n\n- The API reference states that \u201ca pod is ready when all its containers are ready **AND** all conditions specified in the readiness gates have status equal to\u202f\u2018True\u2019\u201d[4].  \n- Readiness probes are the mechanism that tells Kubernetes when a container is ready; they run for the whole lifetime of the container and, when they succeed, the container is marked ready[1].  \n\nThus, your pod will be ready to serve traffic after its containers have passed their readiness probes (or have no readiness probe) and any defined readiness\u2011gate conditions are satisfied.",
+      "sources": [
+        "tasks__configure-pod-container__configure-liveness-readiness-startup-probes.docx",
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__workloads__controllers__statefulset.docx",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "tutorials__stateful-application__basic-stateful-set.html"
+      ],
+      "contexts": [
+        "Tasks \u203a Configure-Pod-Container \u203a Configure-Liveness-Readiness-Startup-Probes\nstartupProbe:  \n  httpGet:  \n    path: /healthz  \n    port: liveness-port  \n  failureThreshold: 30  \n  periodSeconds: 10  \nThanks to the startup probe, the application will have a maximum of 5 minutes  \n(30 * 10 = 300s) to finish its startup.  \nOnce the startup probe has succeeded once, the liveness probe takes over to  \nprovide a fast response to container deadlocks.  \nIf the startup probe never succeeds, the container is killed after 300s and  \nsubject to the pod's restartPolicy.Define readiness probesSometimes, applications are temporarily unable to serve traffic.  \nFor example, an application might need to load large data or configuration  \nfiles during startup, or depend on external services after startup.  \nIn such cases, you don't want to kill the application,  \nbut you don't want to send it requests either. Kubernetes provides  \nreadiness probes to detect and mitigate these situations. A pod with containers  \nreporting that they are not ready does not receive traffic through Kubernetes  \nServices.Note:Readiness probes run on the container during its whole lifecycle.Caution:The readiness and liveness probes do not depend on each other to succeed.  \nIf you want to wait before executing a readiness probe, you should use  \ninitialDelaySeconds or a startupProbe.Readiness probes are configured similarly to liveness probes. The only difference  \nis that you use the readinessProbe field instead of the livenessProbe field.readinessProbe:  \n  exec:  \n    command:  \n    - cat  \n    - /tmp/healthy  \n  initialDelaySeconds: 5  \n  periodSeconds: 5  \nConfiguration for HTTP and TCP readiness probes also remains identical to  \nliveness probes.Readiness and liveness probes can be used in parallel for the same container.  \nUsing both can ensure that traffic does not reach a container that is not ready  \nfor it, and that containers are restarted when they fail.What's nextLearn more about  \nLiveness, Readiness and Startup Probes.For the full specification of probe-related fields, see the API reference:  \nPod,  \nContainer,  \nProbeFeedbackWas this page helpful?Yes  \nNoThanks for the feedback. If you have a specific, answerable question about how to use Kubernetes, ask it on  \nStack Overflow.",
+        "This defaults to 600.If specified, this field needs to be greater than .spec.minReadySeconds.Min Ready Seconds.spec.minReadySeconds is an optional field that specifies the minimum number of seconds for which a newly created Pod should be ready without any of its containers crashing, for it to be considered available. This defaults to 0 (the Pod will be considered available as soon as it is ready). To learn more about when a Pod is considered ready, see Container Probes.Terminating PodsFEATURE STATE: Kubernetes v1.35 [beta](enabled by default)You can see the terminating pods only if the DeploymentReplicaSetTerminatingReplicas feature gate is enabled on the API server and on the kube-controller-managerPods that become terminating due to deletion or scale down may take a long time to terminate, and may consume additional resources during that period. As a result, the total number of all pods can temporarily exceed .spec.replicas. Terminating pods can be tracked using the .status.terminatingReplicas field of the Deployment.Revision History LimitA Deployment's revision history is stored in the ReplicaSets it controls..spec.revisionHistoryLimit is an optional field that specifies the number of old ReplicaSets to retain to allow rollback. These old ReplicaSets consume resources in etcd and crowd the output of kubectl get rs. The configuration of each Deployment revision is stored in its ReplicaSets; therefore, once an old ReplicaSet is deleted, you lose the ability to rollback to that revision of Deployment. By default, 10 old ReplicaSets will be kept, however its ideal value depends on the frequency and stability of new Deployments.More specifically, setting this field to zero means that all old ReplicaSets with 0 replicas will be cleaned up. In this case, a new Deployment rollout cannot be undone, since its revision history is cleaned up.Paused.spec.paused is an optional boolean field for pausing and resuming a Deployment. The only difference between a paused Deployment and one that is not paused, is that any changes into the PodTemplateSpec of the paused Deployment will not trigger new rollouts as long as it is paused.",
+        "Concepts \u203a Workloads \u203a Controllers \u203a Statefulset\nthe new Pod is labelled with apps.kubernetes.io/pod-index. The value of this label is the ordinal index of  \nthe Pod. This label allows you to route traffic to a particular pod index, filter logs/metrics  \nusing the pod index label, and more. Note the feature gate PodIndexLabel is enabled and locked by default for this  \nfeature, in order to disable it, users will have to use server emulated version v1.31.Deployment and Scaling GuaranteesFor a StatefulSet with N replicas, when Pods are being deployed, they are created sequentially, in order from {0..N-1}.When Pods are being deleted, they are terminated in reverse order, from {N-1..0}.Before a scaling operation is applied to a Pod, all of its predecessors must be Running and Ready. If .spec.minReadySeconds is set, predecessors must be available (Ready for at least minReadySeconds).Before a Pod is terminated, all of its successors must be completely shutdown.The StatefulSet should not specify a pod.Spec.TerminationGracePeriodSeconds of 0. This practice  \nis unsafe and strongly discouraged. For further explanation, please refer to  \nforce deleting StatefulSet Pods.When the nginx example above is created, three Pods will be deployed in the order  \nweb-0, web-1, web-2. web-1 will not be deployed before web-0 is  \nRunning and Ready, and web-2 will not be deployed until  \nweb-1 is Running and Ready. If web-0 should fail, after web-1 is Running and Ready, but before  \nweb-2 is launched, web-2 will not be launched until web-0 is successfully relaunched and  \nbecomes Running and Ready.If a user were to scale the deployed example by patching the StatefulSet such that  \nreplicas=1, web-2 would be terminated first. web-1 would not be terminated until web-2  \nis fully shutdown and deleted. If web-0 were to fail after web-2 has been terminated and  \nis completely shutdown, but prior to web-1's termination, web-1 would not be terminated  \nuntil web-0 is Running and Ready.Pod Management PoliciesStatefulSet allows you to relax its ordering guarantees while",
+        "Reference \u203a Kubernetes-Api \u203a Workload-Resources \u203a Pod-V1\nA pod is ready when all its containers are ready AND all conditions specified in the readiness gates have status equal to \"True\" More info: https://git.k8s.io/enhancements/keps/sig-network/580-pod-readiness-gatesPodReadinessGate contains the reference to a pod conditionreadinessGates.conditionType (string), requiredConditionType refers to a condition in the pod's condition list with matching type.restartPolicy (string)Restart policy for all containers within the pod. One of Always, OnFailure, Never. In some contexts, only a subset of those values may be permitted. Default to Always. More info: https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/#restart-policyPossible enum values:\"Always\"\"Never\"\"OnFailure\"terminationGracePeriodSeconds (int64)Optional duration in seconds the pod needs to terminate gracefully. May be decreased in delete request. Value must be non-negative integer. The value zero indicates stop immediately via the kill signal (no opportunity to shut down). If this value is nil, the default grace period will be used instead. The grace period is the duration in seconds after the processes running in the pod are sent a termination signal and the time when the processes are forcibly halted with a kill signal. Set this value longer than the expected cleanup time for your process. Defaults to 30 seconds.schedulingGroup (PodSchedulingGroup)SchedulingGroup provides a reference to the immediate scheduling runtime grouping object that this Pod belongs to. This field is used by the scheduler to identify the group and apply the correct group scheduling policies. The association with a group also impacts other lifecycle aspects of a Pod that are relevant in a wider context of scheduling like preemption, resource attachment, etc. If not specified, the Pod is treated as a single unit in all of these aspects. The group object referenced by this field may not exist at the time the Pod is created. This field is immutable, but a group object with the same name may be recreated with different policies.",
+        "Tutorials \u203a Stateful-Application \u203a Basic-Stateful-Set\nWait for the new web-2 Pod to be Running and Ready.# This should already be running  \nkubectl get pod -l app=nginx --watch  \nNAME READY STATUS RESTARTS AGE  \nweb-0 1/1 Running 0 4m  \nweb-1 1/1 Running 0 4m  \nweb-2 0/1 ContainerCreating 0 11s  \nweb-2 1/1 Running 0 18s  \nGet the Pod's container:kubectl get pod web-2 --template '{{range $i, $c := .spec.containers}}{{$c.image}}{{end}}'  \nregistry.k8s.io/nginx-slim:0.21  \nWhen you changed the partition, the StatefulSet controller automatically  \nupdated the web-2 Pod because the Pod's ordinal was greater than or equal to  \nthe partition.Delete the web-1 Pod:kubectl delete pod web-1  \npod \"web-1\" deleted  \nWait for the web-1 Pod to be Running and Ready.# This should already be running  \nkubectl get pod -l app=nginx --watch  \nThe output is similar to:NAME READY STATUS RESTARTS AGE  \nweb-0 1/1 Running 0 6m  \nweb-1 0/1 Terminating 0 6m  \nweb-2 1/1 Running 0 2m  \nweb-1 0/1 Terminating 0 6m  \nweb-1 0/1 Terminating 0 6m  \nweb-1 0/1 Terminating 0 6m  \nweb-1 0/1 Pending 0 0s  \nweb-1 0/1 Pending 0 0s  \nweb-1 0/1 ContainerCreating 0 0s  \nweb-1 1/1 Running 0 18s  \nGet the web-1 Pod's container image:kubectl get pod web-1 --template '{{range $i, $c := .spec.containers}}{{$c.image}}{{end}}'  \nregistry.k8s.io/nginx-slim:0.24  \nweb-1 was restored to its original configuration because the Pod's ordinal  \nwas less than the partition. When a partition is specified, all Pods with an  \nordinal that is greater than or equal to the partition will be updated when the"
+      ],
+      "context_sources": [
+        "tasks__configure-pod-container__configure-liveness-readiness-startup-probes.docx",
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__workloads__controllers__statefulset.docx",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "tutorials__stateful-application__basic-stateful-set.html"
+      ],
+      "context_source_names": [
+        "tasks__configure-pod-container__configure-liveness-readiness-startup-probes.docx",
+        "concepts__workloads__controllers__deployment.txt",
+        "concepts__workloads__controllers__statefulset.docx",
+        "reference__kubernetes-api__workload-resources__pod-v1.docx",
+        "tutorials__stateful-application__basic-stateful-set.html"
+      ],
+      "latency_ms": 72318.4,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "tasks__configure-pod-container__configure-liveness-readiness-startup-probes.docx"
+        ]
+      },
+      "tokens_used": 6789,
+      "confidence": 1.0,
+      "crag_action": null,
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 1.0,
+      "unsupported_claims": [],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0005
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 0.2727,
+        "answer_relevancy": 0.8452,
+        "context_precision": 1.0,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    },
+    {
+      "id": "q-011",
+      "question": "What is the best practice for managing application secrets securely in Kubernetes?",
+      "intent": "rag",
+      "demonstrates_feature": "rerank",
+      "golden_sources": [
+        "concepts__configuration__secret.txt"
+      ],
+      "golden_answer_keywords": [
+        "secret",
+        "encrypt",
+        "base64"
+      ],
+      "answer": "The documentation recommends several steps to handle application secrets securely:\n\n1. **Enable encryption at rest for Secrets** \u2013\u202fso that the data is not stored in clear\u2011text in etcd.\u202f[3]  \n2. **Apply least\u2011privilege RBAC rules** \u2013\u202flimit who can read, list or watch Secrets, and restrict Secret access to only the containers that need them.\u202f[4]\u202f[5]  \n3. **Restrict Secret access to specific containers** \u2013\u202fmount or expose Secrets only to the Pods that require them.\u202f[3]  \n4. **Consider using an external secret\u2011store provider** \u2013\u202fto keep secret material outside the cluster\u2019s API server.\u202f[3]  \n5. **Mark Secrets as immutable when possible** \u2013\u202fprevents accidental or malicious updates and reduces load on the API server.\u202f[5]\n\nFollowing these measures together constitutes the best\u2011practice approach for managing application secrets securely in Kubernetes.",
+      "sources": [
+        "concepts__overview__what-is-kubernetes.docx",
+        "concepts__security__overview.txt",
+        "concepts__configuration__secret.txt",
+        "concepts__security__rbac-good-practices.pdf"
+      ],
+      "contexts": [
+        "Concepts \u203a Overview \u203a What-Is-Kubernetes\nYou tell Kubernetes how much CPU and memory (RAM) each container needs. Kubernetes can fit  \ncontainers onto your nodes to make the best use of your resources.Self-healing  \nKubernetes restarts containers that fail, replaces containers, kills containers that don't  \nrespond to your user-defined health check, and doesn't advertise them to clients until they  \nare ready to serve.Secret and configuration management  \nKubernetes lets you store and manage sensitive information, such as passwords, OAuth tokens,  \nand SSH keys. You can deploy and update secrets and application configuration without  \nrebuilding your container images, and without exposing secrets in your stack configuration.Batch execution  \nIn addition to services, Kubernetes can manage your batch and CI workloads, replacing containers that fail, if desired.Horizontal scaling  \nScale your application up and down with a simple command, with a UI, or automatically based on CPU usage.IPv4/IPv6 dual-stack  \nAllocation of IPv4 and IPv6 addresses to Pods and Services.Designed for extensibility  \nAdd features to your Kubernetes cluster without changing upstream source code.What Kubernetes is notKubernetes is not a traditional, all-inclusive PaaS (Platform as a Service) system.  \nSince Kubernetes operates at the container level rather than at the hardware level,  \nit provides some generally applicable features common to PaaS offerings, such as  \ndeployment, scaling, load balancing, and lets users integrate their logging, monitoring,  \nand alerting solutions. However, Kubernetes is not monolithic, and these default solutions  \nare optional and pluggable. Kubernetes provides the building blocks for building developer  \nplatforms, but preserves user choice and flexibility where it is important.Kubernetes:Does not limit the types of applications supported. Kubernetes aims to support an  \nextremely diverse variety of workloads, including stateless, stateful, and data-processing  \nworkloads. If an application can run in a container, it should run great on Kubernetes.Does not deploy source code and does not build your application. Continuous Integration,  \nDelivery, and Deployment (CI/CD) workflows are determined by organization cultures and  \npreferences as well as technical requirements.Does not provide application-level services, such as middleware (for example, message buses),",
+        "Security | Kubernetes SecurityConcepts for keeping your cloud-native workload secure.This section of the Kubernetes documentation aims to help you learn to run workloads more securely, and about the essential aspects of keeping a Kubernetes cluster secure.Kubernetes is based on a cloud-native architecture, and draws on advice from the CNCF about good practice for cloud native information security.Read Cloud Native Security and Kubernetes for the broader context about how to secure your cluster and the applications that you're running on it.Kubernetes security mechanismsKubernetes includes several APIs and security controls, as well as ways to define policies that can form part of how you manage information security.Control plane protectionA key security mechanism for any Kubernetes cluster is to control access to the Kubernetes API.Kubernetes expects you to configure and use TLS to provide data encryption in transit within the control plane, and between the control plane and its clients. You can also enable encryption at rest for the data stored within Kubernetes control plane; this is separate from using encryption at rest for your own workloads' data, which might also be a good idea.SecretsThe Secret API provides basic protection for configuration values that require confidentiality.Workload protectionEnforce Pod security standards to ensure that Pods and their containers are isolated appropriately. You can also use RuntimeClasses to define custom isolation if you need it.Network policies let you control network traffic between Pods, or between Pods and the network outside your cluster.You can deploy security controls from the wider ecosystem to implement preventative or detective controls around Pods, their containers, and the images that run in them.Admission controlAdmission controllers are plugins that intercept Kubernetes API requests and can validate or mutate the requests based on specific fields in the request. Thoughtfully designing these controllers helps to avoid unintended disruptions as Kubernetes APIs change across version updates. For design considerations, see Admission Webhook Good Practices.AuditingKubernetes audit logging provides a security-relevant, chronological set of records documenting the sequence of actions in a cluster. The cluster audits the activities generated by users, by applications that use the Kubernetes API, and by the control plane itself.Cloud provider securityNote:\u2008Items on this page refer to vendors external to Kubernetes.",
+        "Secrets | Kubernetes SecretsA Secret is an object that contains a small amount of sensitive data such as a password, a token, or a key. Such information might otherwise be put in a Pod specification or in a container image. Using a Secret means that you don't need to include confidential data in your application code.Because Secrets can be created independently of the Pods that use them, there is less risk of the Secret (and its data) being exposed during the workflow of creating, viewing, and editing Pods. Kubernetes, and applications that run in your cluster, can also take additional precautions with Secrets, such as avoiding writing sensitive data to nonvolatile storage.Secrets are similar to ConfigMaps but are specifically intended to hold confidential data.Caution:Kubernetes Secrets are, by default, stored unencrypted in the API server's underlying data store (etcd). Anyone with API access can retrieve or modify a Secret, and so can anyone with access to etcd. Additionally, anyone who is authorized to create a Pod in a namespace can use that access to read any Secret in that namespace; this includes indirect access such as the ability to create a Deployment.In order to safely use Secrets, take at least the following steps:Enable Encryption at Rest for Secrets.Enable or configure RBAC rules with least-privilege access to Secrets.Restrict Secret access to specific containers.Consider using external Secret store providers.For more guidelines to manage and improve the security of your Secrets, refer to Good practices for Kubernetes Secrets.See Information security for Secrets for more details.Uses for SecretsYou can use Secrets for purposes such as the following:Set environment variables for a container.Provide credentials such as SSH keys or passwords to Pods.Allow the kubelet to pull container images from private registries.The Kubernetes control plane also uses Secrets; for example, bootstrap token Secrets are a mechanism to help automate node registration.Use case: dotfiles in a secret volumeYou can make your data \"hidden\" by defining a key that begins with a dot. This key represents a dotfile or \"hidden\" file.",
+        "Concepts \u203a Security \u203a Rbac-Good-Practices\npossible privilege escalations. If an attacker is able to create a user account with the same name as a deleted user, they can automatically inherit all the rights of the deleted user, especially the rights assigned to that user.Kubernetes RBAC - privilege escalation risksWithin Kubernetes RBAC there are a number of privileges which, if granted, can allow a user or a service account to escalate their privileges in the cluster or affect systems outside the cluster.This section is intended to provide visibility of the areas where cluster operators should take care, to ensure that they do not inadvertently allow for more access to clusters than intended.Listing secretsIt is generally clear that allowing get access on Secrets will allow a user to read their contents. It is also important to note that list and watch access also effectively allow for users to reveal the Secret contents. For example, when a List response is returned (for example, via kubectl get secrets -A -o yaml), the response includes the contents of all Secrets.Workload creationPermission to create workloads (either Pods, or workload resources that manage Pods) in a namespace implicitly grants access to many other resources in that namespace, such as Secrets, ConfigMaps, and PersistentVolumes that can be mounted in Pods. Additionally, since Pods can run as any ServiceAccount, granting permission to create workloads also implicitly grants the API access levels of any service account in that namespace.Users who can run privileged Pods can use that access to gain node access and potentially to further elevate their privileges. Where you do not fully trust a user or other principal with the ability to create suitably secure and isolated Pods, you should enforce either the Baseline or Restricted Pod Security Standard. You can use Pod Security admission or other (third party) mechanisms to implement that enforcement.For these reasons, namespaces should be used to separate resources requiring different levels of trust or tenancy. It is still considered best practice to follow least privilege principles and assign the minimum set of permissions, but boundaries within a namespace should be considered weak.Persistent volume creationIf someone - or some application - is allowed to create arbitrary PersistentVolumes, that access includes the creation of hostPath volumes, which then means that a Pod would get access to the underlying host filesystem(s) on the associated node.",
+        "and it can be used for signing\nAny Pods created with that ServiceAccount or created with that ServiceAccount by default, will get their imagePullSecrets field set to that of the service account. See Add ImagePullSecrets to a service account for a detailed explanation of that process.Using Secrets with static PodsYou cannot use ConfigMaps or Secrets with static Pods.Immutable SecretsFEATURE STATE: Kubernetes v1.21 [stable]Kubernetes lets you mark specific Secrets (and ConfigMaps) as immutable. Preventing changes to the data of an existing Secret has the following benefits:protects you from accidental (or unwanted) updates that could cause applications outages(for clusters that extensively use Secrets - at least tens of thousands of unique Secret to Pod mounts), switching to immutable Secrets improves the performance of your cluster by significantly reducing load on kube-apiserver. The kubelet does not need to maintain a [watch] on any Secrets that are marked as immutable.Marking a Secret as immutableYou can create an immutable Secret by setting the immutable field to true. For example,apiVersion: v1 kind: Secret metadata: ... data: ... immutable: true You can also update any existing mutable Secret to make it immutable.Note:Once a Secret or ConfigMap is marked as immutable, it is not possible to revert this change nor to mutate the contents of the data field. You can only delete and recreate the Secret. Existing Pods maintain a mount point to the deleted Secret - it is recommended to recreate these pods.Information security for SecretsAlthough ConfigMap and Secret work similarly, Kubernetes applies some additional protection for Secret objects.Secrets often hold values that span a spectrum of importance, many of which can cause escalations within Kubernetes (e.g. service account tokens) and to external systems. Even if an individual app can reason about the power of the Secrets it expects to interact with, other apps within the same namespace can render those assumptions invalid.Authorization configuration affects how Secret data can be accessed within a namespace. For example, granting list or watch permissions on Secrets allows a subject to read all Secret data in that namespace, not only the Secrets explicitly referenced by its Pods."
+      ],
+      "context_sources": [
+        "concepts__overview__what-is-kubernetes.docx",
+        "concepts__security__overview.txt",
+        "concepts__configuration__secret.txt",
+        "concepts__security__rbac-good-practices.pdf",
+        "concepts__configuration__secret.txt"
+      ],
+      "context_source_names": [
+        "concepts__overview__what-is-kubernetes.docx",
+        "concepts__security__overview.txt",
+        "concepts__configuration__secret.txt",
+        "concepts__security__rbac-good-practices.pdf",
+        "concepts__configuration__secret.txt"
+      ],
+      "latency_ms": 72049.0,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "concepts__configuration__secret.txt"
+        ]
+      },
+      "tokens_used": 6513,
+      "confidence": 1.0,
+      "crag_action": null,
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 1.0,
+      "unsupported_claims": [],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0004
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 0.5385,
+        "answer_relevancy": 0.9886,
+        "context_precision": 0.3667,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    },
+    {
+      "id": "q-012",
+      "question": "How does Kubernetes decide which node is best to schedule a new pod onto?",
+      "intent": "rag",
+      "demonstrates_feature": "rerank",
+      "golden_sources": [
+        "concepts__scheduling-eviction__kube-scheduler.pdf"
+      ],
+      "golden_answer_keywords": [
+        "scheduler",
+        "filter",
+        "score"
+      ],
+      "answer": "Kubernetes chooses a node for a new Pod in two main stages:\n\n1. **Filtering** \u2013 The scheduler first builds a list of *feasible* nodes.  \n   It runs a series of filter functions (e.g., the **PodFitsResources** filter) that discard any node that does not satisfy the Pod\u2019s requirements such as resource requests, hardware or software constraints, affinity rules, etc. After this step the remaining nodes are those that can potentially run the Pod\u202f[1][4].\n\n2. **Scoring** \u2013 The scheduler then scores the nodes that survived filtering.  \n   Each node receives a numeric score based on the active scoring rules (plugins or priorities). The node with the highest score is selected; if several nodes have the same top score, the scheduler picks one of them at random\u202f[4].\n\nThe selected node is then bound to the Pod, completing the scheduling decision\u202f[1].",
+      "sources": [
+        "concepts__scheduling-eviction__kube-scheduler.pdf",
+        "tutorials__kubernetes-basics__explore__explore-intro.pdf",
+        "concepts__workloads__pods.html",
+        "concepts__workloads__controllers__daemonset.html"
+      ],
+      "contexts": [
+        "Concepts \u203a Scheduling-Eviction \u203a Kube-Scheduler\nKubernetes Scheduler | Kubernetes Kubernetes SchedulerIn Kubernetes, scheduling refers to making sure that Pods are matched to Nodes so that Kubelet can run them.Scheduling overviewA scheduler watches for newly created Pods that have no Node assigned. For every Pod that the scheduler discovers, the scheduler becomes responsible for finding the best Node for that Pod to run on. The scheduler reaches this placement decision taking into account the scheduling principles described below.If you want to understand why Pods are placed onto a particular Node, or if you're planning to implement a custom scheduler yourself, this page will help you learn about scheduling.kube-schedulerkube-scheduler is the default scheduler for Kubernetes and runs as part of the control plane. kube-scheduler is designed so that, if you want and need to, you can write your own scheduling component and use that instead.Kube-scheduler selects an optimal node to run newly created or not yet scheduled (unscheduled) pods. Since containers in pods - and pods themselves - can have different requirements, the scheduler filters out any nodes that don't meet a Pod's specific scheduling needs. Alternatively, the API lets you specify a node for a Pod when you create it, but this is unusual and is only done in special cases.In a cluster, Nodes that meet the scheduling requirements for a Pod are called feasible nodes. If none of the nodes are suitable, the pod remains unscheduled until the scheduler is able to place it.The scheduler finds feasible Nodes for a Pod and then runs a set of functions to score the feasible Nodes and picks a Node with the highest score among the feasible ones to run the Pod. The scheduler then notifies the API server about this decision in a process called binding.Factors that need to be taken into account for scheduling decisions include individual and collective resource requirements, hardware / software / policy constraints, affinity and anti-affinity specifications, data locality, inter-workload interference, and so on.Node selection in kube-schedulerkube-scheduler selects a node for the pod in a 2-step operation:FilteringScoringThe filtering step finds the set of Nodes where it's feasible to schedule the Pod.",
+        "Tutorials \u203a Kubernetes-Basics \u203a Explore \u203a Explore-Intro\nIn case of a Node failure, identical Pods are scheduled on other available Nodes in the cluster.Pods overviewContainers should only be scheduled together in a single Pod if they are tightly coupled and need to share resources such as disk.NodesA Pod always runs on a Node. A Node is a worker machine in Kubernetes and may be either a virtual or a physical machine, depending on the cluster. Each Node is managed by the control plane. A Node can have multiple pods, and the Kubernetes control plane automatically handles scheduling the pods across the Nodes in the cluster. The control plane's automatic scheduling takes into account the available resources on each Node.Every Kubernetes Node runs at least:Kubelet, a process responsible for communication between the Kubernetes control plane and the Node; it manages the Pods and the containers running on a machine.A container runtime (like Docker) responsible for pulling the container image from a registry, unpacking the container, and running the application.Nodes overviewTroubleshooting with kubectlIn Module 2, you used the kubectl command-line interface. You'll continue to use it in Module 3 to get information about deployed applications and their environments. The most common operations can be done with the following kubectl subcommands:kubectl get - list resourceskubectl describe - show detailed information about a resourcekubectl logs - print the logs from a container in a podkubectl exec - execute a command on a container in a podYou can use these commands to see when applications were deployed, what their current statuses are, where they are running and what their configurations are.Now that we know more about our cluster components and the command line, let's explore our application.Check application configurationLet's verify that the application we deployed in the previous scenario is running.",
+        "Concepts \u203a Workloads \u203a Pods\nvalue, but this can produce unexpected results for the Pod hostname. For best compatibility,  \nthe name should follow the more restrictive rules for a  \nDNS label.Pod OSFEATURE STATE:  \nKubernetes v1.25 [stable]You should set the .spec.os.name field to either windows or linux to indicate the OS on  \nwhich you want the pod to run. These two are the only operating systems supported for now by  \nKubernetes. In the future, this list may be expanded.In Kubernetes v1.36, the value of .spec.os.name does not affect  \nhow the kube-scheduler  \npicks a node for the Pod to run on. In any cluster where there is more than one operating system for  \nrunning nodes, you should set the  \nkubernetes.io/os  \nlabel correctly on each node, and define pods with a nodeSelector based on the operating system  \nlabel. The kube-scheduler assigns your pod to a node based on other criteria and may or may not  \nsucceed in picking a suitable node placement where the node OS is right for the containers in that Pod.  \nThe Pod security standards also use this  \nfield to avoid enforcing policies that aren't relevant to the operating system.Pods and controllersYou can use workload resources to create and manage multiple Pods for you. A controller  \nfor the resource handles replication and rollout and automatic healing in case of  \nPod failure. For example, if a Node fails, a controller notices that Pods on that  \nNode have stopped working and creates a replacement Pod. The scheduler places the  \nreplacement Pod onto a healthy Node.Here are some examples of workload resources that manage one or more Pods:DeploymentStatefulSetDaemonSetSpecifying a scheduling groupFEATURE STATE:  \nKubernetes v1.35 [alpha](disabled by default)By default, Kubernetes schedules every Pod individually. However, some tightly-coupled applications  \nneed a group of Pods to be scheduled simultaneously to function correctly.You can link a Pod to a PodGroup using the  \nscheduling group field  \n(spec.schedulingGroup). This tells the kube-scheduler that the Pod belongs to a specific  \ngroup, enabling it to apply group-level coordinated placement decisions for the entire group at once.Pod templatesControllers for workload resources create Pods",
+        "Concepts \u203a Scheduling-Eviction \u203a Kube-Scheduler\nFor example, the PodFitsResources filter checks whether a candidate Node has enough available resources to meet a Pod's specific resource requests. After this step, the node list contains any suitable Nodes; often, there will be more than one. If the list is empty, that Pod isn't (yet) schedulable.In the scoring step, the scheduler ranks the remaining nodes to choose the most suitable Pod placement. The scheduler assigns a score to each Node that survived filtering, basing this score on the active scoring rules.Finally, kube-scheduler assigns the Pod to the Node with the highest ranking. If there is more than one node with equal scores, kube-scheduler selects one of these at random.There are two supported ways to configure the filtering and scoring behavior of the scheduler:Scheduling Policies allow you to configure Predicates for filtering and Priorities for scoring.Scheduling Profiles allow you to configure Plugins that implement different scheduling stages, including: QueueSort, Filter, Score, Bind, Reserve, Permit, and others. You can also configure the kube-scheduler to run different profiles.What's nextRead about scheduler performance tuningRead about Pod topology spread constraintsRead the reference documentation for kube-schedulerRead the kube-scheduler config (v1) referenceLearn about configuring multiple schedulersLearn about topology management policiesLearn about Pod OverheadLearn about scheduling of Pods that use volumes in:Volume Topology SupportStorage Capacity TrackingNode-specific Volume LimitsFeedbackWas this page helpful?Yes NoThanks for the feedback. If you have a specific, answerable question about how to use Kubernetes, ask it on Stack Overflow. Open an issue in the GitHub Repository if you want to report a problem or suggest an improvement.Last modified February 16, 2024 at 5:27 PM PST: Fix spelling mistake in kube scheduler (33dcba8aa6)",
+        "Concepts \u203a Workloads \u203a Controllers \u203a Daemonset\nTaints and tolerationsThe DaemonSet controller automatically adds a set of tolerations to DaemonSet Pods:Tolerations for DaemonSet podsToleration keyEffectDetailsnode.kubernetes.io/not-readyNoExecuteDaemonSet Pods can be scheduled onto nodes that are not healthy or ready to accept Pods. Any DaemonSet Pods running on such nodes will not be evicted.node.kubernetes.io/unreachableNoExecuteDaemonSet Pods can be scheduled onto nodes that are unreachable from the node controller. Any DaemonSet Pods running on such nodes will not be evicted.node.kubernetes.io/disk-pressureNoScheduleDaemonSet Pods can be scheduled onto nodes with disk pressure issues.node.kubernetes.io/memory-pressureNoScheduleDaemonSet Pods can be scheduled onto nodes with memory pressure issues.node.kubernetes.io/pid-pressureNoScheduleDaemonSet Pods can be scheduled onto nodes with process pressure issues.node.kubernetes.io/unschedulableNoScheduleDaemonSet Pods can be scheduled onto nodes that are unschedulable.node.kubernetes.io/network-unavailableNoScheduleOnly added for DaemonSet Pods that request host networking, i.e., Pods having spec.hostNetwork: true. Such DaemonSet Pods can be scheduled onto nodes with unavailable network.You can add your own tolerations to the Pods of a DaemonSet as well, by  \ndefining these in the Pod template of the DaemonSet.Because the DaemonSet controller sets the  \nnode.kubernetes.io/unschedulable:NoSchedule toleration automatically,  \nKubernetes can run DaemonSet Pods on nodes that are marked as unschedulable.If you use a DaemonSet to provide an important node-level function, such as  \ncluster networking, it is  \nhelpful that Kubernetes places DaemonSet Pods on nodes before they are ready.  \nFor example, without that special toleration, you could end up in a deadlock  \nsituation where the node is not marked as ready because the network plugin is  \nnot running there, and at the same time the network plugin is not running on"
+      ],
+      "context_sources": [
+        "concepts__scheduling-eviction__kube-scheduler.pdf",
+        "tutorials__kubernetes-basics__explore__explore-intro.pdf",
+        "concepts__workloads__pods.html",
+        "concepts__scheduling-eviction__kube-scheduler.pdf",
+        "concepts__workloads__controllers__daemonset.html"
+      ],
+      "context_source_names": [
+        "concepts__scheduling-eviction__kube-scheduler.pdf",
+        "tutorials__kubernetes-basics__explore__explore-intro.pdf",
+        "concepts__workloads__pods.html",
+        "concepts__scheduling-eviction__kube-scheduler.pdf",
+        "concepts__workloads__controllers__daemonset.html"
+      ],
+      "latency_ms": 71874.4,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "concepts__scheduling-eviction__kube-scheduler.pdf"
+        ]
+      },
+      "tokens_used": 6481,
+      "confidence": 1.0,
+      "crag_action": null,
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 1.0,
+      "unsupported_claims": [],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0004
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 1.0,
+        "answer_relevancy": 0.9277,
+        "context_precision": 0.75,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    },
+    {
+      "id": "q-039",
+      "question": "How do I configure a liveness probe with an HTTP endpoint to detect application deadlocks?",
+      "intent": "rag",
+      "demonstrates_feature": "rerank",
+      "golden_sources": [
+        "tasks__configure-pod-container__configure-liveness-readiness-startup-probes.docx"
+      ],
+      "golden_answer_keywords": [
+        "liveness",
+        "livenessProbe",
+        "httpGet"
+      ],
+      "answer": "To detect application deadlocks with an HTTP\u2011based liveness probe, add a **livenessProbe** section to the container spec that uses an `httpGet` handler.\u202fSpecify the endpoint path and the port (you can use a named port), and set the probe timing parameters so the probe fails quickly when the container is not responding.\n\n**Example from the documentation**\n\n```yaml\nlivenessProbe:\n  httpGet:\n    path: /healthz          # HTTP endpoint that returns 200 when the app is healthy\n    port: liveness-port    # Named port defined elsewhere (e.g., containerPort: 8080)\n  failureThreshold: 1      # Number of consecutive failures before the pod is marked unhealthy\n  periodSeconds: 10        # How often the probe is performed\n```\n\nThis configuration causes the kubelet to query `http://<pod\u2011ip>:<liveness-port>/healthz` every\u202f10\u202fseconds. If the endpoint returns a non\u2011success HTTP code (outside 200\u2011399) for one consecutive check, the probe fails and the container is considered deadlocked, triggering a restart\u202f[1].",
+      "sources": [
+        "tasks__configure-pod-container__configure-liveness-readiness-startup-probes.docx"
+      ],
+      "contexts": [
+        "Tasks \u203a Configure-Pod-Container \u203a Configure-Liveness-Readiness-Startup-Probes\nlivenessProbe:  \n  httpGet:  \n    path: /healthz  \n    port: liveness-port  \nProtect slow starting containers with startup probesSometimes, you have to deal with applications that require additional startup  \ntime on their first initialization. In such cases, it can be tricky to set up  \nliveness probe parameters without compromising the fast response to deadlocks  \nthat motivated such a probe. The solution is to set up a startup probe with the  \nsame command, HTTP or TCP check, with a failureThreshold * periodSeconds long  \nenough to cover the worst case startup time.So, the previous example would become:ports:  \n- name: liveness-port  \n  containerPort: 8080\nlivenessProbe:  \n  httpGet:  \n    path: /healthz  \n    port: liveness-port  \n  failureThreshold: 1  \n  periodSeconds: 10",
+        "Tasks \u203a Configure-Pod-Container \u203a Configure-Liveness-Readiness-Startup-Probes\nstartupProbe:  \n  httpGet:  \n    path: /healthz  \n    port: liveness-port  \n  failureThreshold: 30  \n  periodSeconds: 10  \nThanks to the startup probe, the application will have a maximum of 5 minutes  \n(30 * 10 = 300s) to finish its startup.  \nOnce the startup probe has succeeded once, the liveness probe takes over to  \nprovide a fast response to container deadlocks.  \nIf the startup probe never succeeds, the container is killed after 300s and  \nsubject to the pod's restartPolicy.Define readiness probesSometimes, applications are temporarily unable to serve traffic.  \nFor example, an application might need to load large data or configuration  \nfiles during startup, or depend on external services after startup.  \nIn such cases, you don't want to kill the application,  \nbut you don't want to send it requests either. Kubernetes provides  \nreadiness probes to detect and mitigate these situations. A pod with containers  \nreporting that they are not ready does not receive traffic through Kubernetes  \nServices.Note:Readiness probes run on the container during its whole lifecycle.Caution:The readiness and liveness probes do not depend on each other to succeed.  \nIf you want to wait before executing a readiness probe, you should use  \ninitialDelaySeconds or a startupProbe.Readiness probes are configured similarly to liveness probes. The only difference  \nis that you use the readinessProbe field instead of the livenessProbe field.readinessProbe:  \n  exec:  \n    command:  \n    - cat  \n    - /tmp/healthy  \n  initialDelaySeconds: 5  \n  periodSeconds: 5  \nConfiguration for HTTP and TCP readiness probes also remains identical to  \nliveness probes.Readiness and liveness probes can be used in parallel for the same container.  \nUsing both can ensure that traffic does not reach a container that is not ready  \nfor it, and that containers are restarted when they fail.What's nextLearn more about  \nLiveness, Readiness and Startup Probes.For the full specification of probe-related fields, see the API reference:  \nPod,  \nContainer,  \nProbeFeedbackWas this page helpful?Yes  \nNoThanks for the feedback. If you have a specific, answerable question about how to use Kubernetes, ask it on  \nStack Overflow.",
+        "Tasks \u203a Configure-Pod-Container \u203a Configure-Liveness-Readiness-Startup-Probes\n    command: [ \"/usr/local/bin/etcd\", \"--data-dir\",  \"/var/lib/etcd\", \"--listen-client-urls\", \"http://0.0.0.0:2379\", \"--advertise-client-urls\", \"http://127.0.0.1:2379\", \"--log-level\", \"debug\"]  \n    ports:  \n    - containerPort: 2379  \n    livenessProbe:  \n      grpc:  \n        port: 2379  \n      initialDelaySeconds: 10  \nTo try the gRPC liveness check, create a Pod using the command below.  \nIn the example below, the etcd pod is configured to use gRPC liveness probe.kubectl apply -f https://k8s.io/examples/pods/probe/grpc-liveness.yaml  \nAfter 15 seconds, view Pod events to verify that the liveness check has not failed:kubectl describe pod etcd-with-grpc  \nWhen using a gRPC probe, there are some technical details to be aware of:The probes run against the pod IP address or its hostname.  \nBe sure to configure your gRPC endpoint to listen on the Pod's IP address.The probes do not support any authentication parameters (like -tls).There are no error codes for built-in probes. All errors are considered as probe failures.If ExecProbeTimeout feature gate is set to false, grpc-health-probe does not  \nrespect the timeoutSeconds setting (which defaults to 1s), while built-in probe would fail on timeout.Use a named portYou can use a named port  \nfor HTTP and TCP probes. gRPC probes do not support named ports.For example:ports:  \n- name: liveness-port  \n  containerPort: 8080",
+        "Tasks \u203a Configure-Pod-Container \u203a Configure-Liveness-Readiness-Startup-Probes\n    image: registry.k8s.io/goproxy:0.1  \n    ports:  \n    - containerPort: 8080  \n    readinessProbe:  \n      tcpSocket:  \n        port: 8080  \n      initialDelaySeconds: 15  \n      periodSeconds: 10  \n    livenessProbe:  \n      tcpSocket:  \n        port: 8080  \n      initialDelaySeconds: 15  \n      periodSeconds: 10  \nAs you can see, configuration for a TCP check is quite similar to an HTTP check.  \nThis example uses both readiness and liveness probes. The kubelet will run the  \nfirst liveness probe 15 seconds after the container starts. This will attempt to  \nconnect to the goproxy container on port 8080. If the liveness probe fails,  \nthe container will be restarted. The kubelet will continue to run this check  \nevery 10 seconds.In addition to the liveness probe, this configuration includes a readiness  \nprobe. The kubelet will run the first readiness probe 15 seconds after the  \ncontainer starts. Similar to the liveness probe, this will attempt to connect to  \nthe goproxy container on port 8080. If the probe succeeds, the Pod will be  \nmarked as ready and will receive traffic from services. If the readiness probe  \nfails, the pod will be marked unready and will not receive traffic from any  \nservices.To try the TCP liveness check, create a Pod:kubectl apply -f https://k8s.io/examples/pods/probe/tcp-liveness-readiness.yaml  \nAfter 15 seconds, view Pod events to verify that liveness probes:kubectl describe pod goproxy  \nDefine a gRPC liveness probeFEATURE STATE:  \nKubernetes v1.27 [stable]If your application implements the  \ngRPC Health Checking Protocol,  \nthis example shows how to configure Kubernetes to use it for application liveness checks.  \nSimilarly you can configure readiness and startup probes.Here is an example manifest:pods/probe/grpc-liveness.yaml  \napiVersion: v1  \nkind: Pod  \nmetadata:  \n  name: etcd-with-grpc  \nspec:  \n  containers:  \n  - name: etcd  \n    image: registry.k8s.io/etcd:3.5.1-0",
+        "Tasks \u203a Configure-Pod-Container \u203a Configure-Liveness-Readiness-Startup-Probes\nreturns a success code, the kubelet considers the container to be alive and  \nhealthy. If the handler returns a failure code, the kubelet kills the container  \nand restarts it.Any code greater than or equal to 200 and less than 400 indicates success. Any  \nother code indicates failure.You can see the source code for the server in  \nserver.go.For the first 10 seconds that the container is alive, the /healthz handler  \nreturns a status of 200. After that, the handler returns a status of 500.http.HandleFunc(\"/healthz\", func(w http.ResponseWriter, r *http.Request) {  \n    duration := time.Now().Sub(started)  \n    if duration.Seconds() > 10 {  \n        w.WriteHeader(500)  \n        w.Write([]byte(fmt.Sprintf(\"error: %v\", duration.Seconds())))  \n    } else {  \n        w.WriteHeader(200)  \n        w.Write([]byte(\"ok\"))  \n    }  \n})  \nThe kubelet starts performing health checks 3 seconds after the container starts.  \nSo the first couple of health checks will succeed. But after 10 seconds, the health  \nchecks will fail, and the kubelet will kill and restart the container.To try the HTTP liveness check, create a Pod:kubectl apply -f https://k8s.io/examples/pods/probe/http-liveness.yaml  \nAfter 10 seconds, view Pod events to verify that liveness probes have failed and  \nthe container has been restarted:kubectl describe pod liveness-http  \nIn releases after v1.13, local HTTP proxy environment variable settings do not  \naffect the HTTP liveness probe.Define a TCP liveness probeA third type of liveness probe uses a TCP socket. With this configuration, the  \nkubelet will attempt to open a socket to your container on the specified port.  \nIf it can establish a connection, the container is considered healthy, if it  \ncan't it is considered a failure.pods/probe/tcp-liveness-readiness.yaml  \napiVersion: v1  \nkind: Pod  \nmetadata:  \n  name: goproxy  \n  labels:  \n    app: goproxy  \nspec:  \n  containers:  \n  - name: goproxy"
+      ],
+      "context_sources": [
+        "tasks__configure-pod-container__configure-liveness-readiness-startup-probes.docx",
+        "tasks__configure-pod-container__configure-liveness-readiness-startup-probes.docx",
+        "tasks__configure-pod-container__configure-liveness-readiness-startup-probes.docx",
+        "tasks__configure-pod-container__configure-liveness-readiness-startup-probes.docx",
+        "tasks__configure-pod-container__configure-liveness-readiness-startup-probes.docx"
+      ],
+      "context_source_names": [
+        "tasks__configure-pod-container__configure-liveness-readiness-startup-probes.docx",
+        "tasks__configure-pod-container__configure-liveness-readiness-startup-probes.docx",
+        "tasks__configure-pod-container__configure-liveness-readiness-startup-probes.docx",
+        "tasks__configure-pod-container__configure-liveness-readiness-startup-probes.docx",
+        "tasks__configure-pod-container__configure-liveness-readiness-startup-probes.docx"
+      ],
+      "latency_ms": 72819.6,
+      "forbidden": {
+        "passed": true,
+        "hits": []
+      },
+      "source_overlap": {
+        "overlap": 1.0,
+        "matched": [
+          "tasks__configure-pod-container__configure-liveness-readiness-startup-probes.docx"
+        ]
+      },
+      "tokens_used": 6586,
+      "confidence": 1.0,
+      "crag_action": null,
+      "reflection_iterations": 0,
+      "hyde_hypotheses": [],
+      "refined_question": null,
+      "predicted_intent": "rag",
+      "intent_match": true,
+      "generated_sql": null,
+      "sql_rows_count": null,
+      "sql_keyword_match": null,
+      "cache_hits": {},
+      "cost_saved_usd": 0.0,
+      "blocked": {
+        "blocked": false,
+        "reason": null,
+        "false_block": false
+      },
+      "grounding_action": "pass",
+      "grounding_score": 1.0,
+      "unsupported_claims": [],
+      "security": {
+        "input_action": "unchanged",
+        "input_pii": [],
+        "guard_scores": {
+          "prompt_injection": 0.0,
+          "toxicity": 0.0004
+        },
+        "moderation": "ok",
+        "output_pii": []
+      },
+      "metrics": {
+        "faithfulness": 0.6667,
+        "answer_relevancy": 0.9794,
+        "context_precision": 1.0,
+        "context_recall": 1.0
+      },
+      "judge_model": "qwen-3.8-27b",
+      "judge_context": "source+text"
+    }
+  ],
+  "skipped": [],
+  "errors": [],
+  "aggregate": {
+    "n_evaluated": 5,
+    "n_skipped": 0,
+    "n_errors": 0,
+    "faithfulness": 0.696,
+    "context_precision": 0.663,
+    "context_recall": 1.0,
+    "answer_relevancy": 0.939,
+    "source_overlap": 1.0,
+    "forbidden_violations": 0,
+    "latency_ms": 71876.2,
+    "intent_accuracy": 1.0,
+    "sql_keyword_match_rate": null,
+    "answer_cache_hit_rate": 0.0,
+    "sql_result_cache_hit_rate": null,
+    "block_rate": null,
+    "false_block_rate": 0.0,
+    "grounding_score": 1.0,
+    "grounding_warned": 0,
+    "grounding_replaced": 0,
+    "cost_saved_usd": 0.0
+  }
+}

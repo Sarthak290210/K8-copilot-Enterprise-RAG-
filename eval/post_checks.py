@@ -19,6 +19,12 @@ def _norm(source: str) -> str:
 
 ID_METRICS = ("context_precision", "context_recall")
 
+# What the LLM judge sees per chunk (stored per row and per result file; rows judged another
+# way are re-judged). "text": the chunk text only (E1-E6). "source+text" (2026-10-28, user's
+# choice): "Source: <file or URL>" then the text, as the answer model sees it, so an answer that
+# names its document (q-008: "it's in deployment.txt") can be checked.
+JUDGE_CONTEXT = "source+text"
+
 
 def id_context_scores(context_sources: list[str], golden: list[str]) -> dict[str, float | None]:
     """context_precision / context_recall from file names instead of an LLM judge (0 tokens).
@@ -55,6 +61,17 @@ def source_overlap(actual: list[str], golden: list[str]) -> dict[str, Any]:
     actual_norm = {_norm(s) for s in actual}
     matched = [s for s in golden if _norm(s) in actual_norm]
     return {"overlap": round(len(matched) / len(golden), 3), "matched": matched}
+
+
+def blocked_check(blocked_reason: str | None, demonstrates_feature: str) -> dict[str, Any]:
+    """Phase 6: was the question stopped by the input guard, and was that a false block (a
+    non-security golden is a legitimate question)?"""
+    blocked = blocked_reason is not None
+    return {
+        "blocked": blocked,
+        "reason": blocked_reason,
+        "false_block": blocked and demonstrates_feature != "security",
+    }
 
 
 DB_INTENTS = ("sql", "hybrid")

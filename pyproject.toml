@@ -38,7 +38,7 @@ dependencies = [
     "voyageai>=0.3.0",
     "tavily-python>=0.5.0",
     # === Phase 4 deps ===
-    "llm-guard>=0.3.15",
+    "llm-guard[onnxruntime]>=0.3.15",  # Phase 6: input guard models run with ONNX Runtime
     "boto3>=1.35.0",
     "pypdf>=5.1.0",
     # === Data pipeline deps ===

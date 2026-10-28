@@ -23,10 +23,15 @@ def fakes(monkeypatch):
         state["calls"].append(("sparse", top_k))
         return state["chunks"]
 
-    async def hybrid_search(question, vector, top_k=20, dense_search=None):
+    async def hybrid_search(
+        question, vector, top_k=20, dense_search=None, sparse_query=None, max_per_source=0
+    ):
         state["calls"].append(("hybrid", top_k))
+        state["max_per_source"] = max_per_source
         if dense_search is not None:  # HyDE plugged in as the dense half
-            return [*(await dense_search(20)), *state["chunks"]]
+            dense = await dense_search(20)
+            state["bm25_text"] = sparse_query() if sparse_query else question
+            return [*dense, *state["chunks"]]
         return state["chunks"]
 
     class FakeReranker:
@@ -83,7 +88,7 @@ async def test_answer_with_sources_and_trace(fakes):
 
     system_prompt, user_message = fakes["llm_calls"][0]
     assert "Answer ONLY from the provided context" in system_prompt
-    assert "[1] (source: pods.html)\nPods are the smallest units." in user_message
+    assert "<<DOCUMENT id=1 source=pods.html>>\nPods are the smallest units." in user_message
     assert user_message.endswith("Question: What is a Pod?")
 
 
@@ -164,8 +169,28 @@ async def test_rerank_fetches_candidates_then_keeps_top_k(fakes):
     )
     assert fakes["calls"] == ["embed", ("hybrid", 20)]  # reranker_initial_top_k candidates
     assert fakes["rerank"] == ("q", 20, 3)
+    assert fakes["max_per_source"] == 0  # rerank candidates aren't capped per document
     assert [c.source for c in traced] == ["doc19.txt", "doc18.txt", "doc17.txt"]
     assert response.metadata.flags_used["enable_rerank"] is True
+    system_prompt = fakes["llm_calls"][0][0]  # the answer is told its documents were reranked
+    assert "cross-encoder reranker" in system_prompt and "hypothetical" not in system_prompt
+
+
+async def test_plain_request_gets_no_technique_context(fakes):
+    fakes["chunks"] = [chunk("pods.html", "A Pod is ...")]
+    await rag_service.run_rag_with_trace("q", {"search_mode": "hybrid"})
+    system_prompt = fakes["llm_calls"][0][0]
+    assert "cross-encoder" not in system_prompt and "hypothetical" not in system_prompt
+
+
+async def test_hybrid_search_caps_chunks_per_document(fakes, monkeypatch):
+    """User's choice (2026-10-28): max 2 chunks per document, from MAX_CHUNKS_PER_SOURCE."""
+    fakes["chunks"] = [chunk("pods.html", "A Pod is ...")]
+    await rag_service.run_rag_with_trace("q", {"search_mode": "hybrid"})
+    assert fakes["calls"] == ["embed", ("hybrid", 5)] and fakes["max_per_source"] == 2
+    monkeypatch.setattr(rag_service.settings, "max_chunks_per_source", 0)
+    await rag_service.run_rag_with_trace("q", {"search_mode": "hybrid", "top_k": 4})
+    assert fakes["max_per_source"] == 0  # 0 turns the cap off
 
 
 # ---- flag validation (code review: top_k bounds, real booleans) ----
@@ -200,6 +225,29 @@ def test_flags_must_be_an_object():
 # ---- Phase 3: HyDE, CRAG, Self-RAG wiring ----
 
 
+@pytest.mark.parametrize(("top_k", "expected"), [(5, 8), (3, 8), (12, 12)])
+async def test_hyde_answers_from_at_least_hyde_top_k_chunks(fakes, monkeypatch, top_k, expected):
+    """User's choice (2026-10-28): HyDE requests use top 8; a larger top_k flag wins."""
+
+    class FakeHyDE:
+        hypotheses, tokens_used = ["p"], 0
+
+        async def retrieve(self, question, top_k=5):
+            return []
+
+        def sparse_query(self, question):
+            return question
+
+    monkeypatch.setattr(rag_service, "HyDERetriever", FakeHyDE)
+    await rag_service.run_rag("q", {"search_mode": "hybrid", "enable_hyde": True, "top_k": top_k})
+    assert fakes["calls"] == [("hybrid", expected)]
+
+
+async def test_hyde_top_k_ignored_for_sparse_search(fakes):
+    await rag_service.run_rag("q", {"search_mode": "sparse", "enable_hyde": True})
+    assert fakes["calls"] == [("sparse", 5)]  # HyDE doesn't run for sparse, so neither does top 8
+
+
 async def test_hyde_is_the_dense_half_of_hybrid_search(fakes, monkeypatch):
     calls = []
 
@@ -211,13 +259,21 @@ async def test_hyde_is_the_dense_half_of_hybrid_search(fakes, monkeypatch):
             calls.append(("hyde", top_k))
             return [chunk("hyde.txt", "from hyde")]
 
+        def sparse_query(self, question):
+            return f"{question} {' '.join(self.hypotheses)}"
+
     monkeypatch.setattr(rag_service, "HyDERetriever", FakeHyDE)
     fakes["chunks"] = [chunk("bm25.txt", "from bm25")]
     response, traced = await rag_service.run_rag_with_trace(
         "q", {"search_mode": "hybrid", "enable_hyde": True}
     )
     assert calls == [("hyde", 20)]  # hybrid_search's depth
-    assert fakes["calls"] == [("hybrid", 5)]  # one hybrid_search; no plain embedding
+    # one hybrid_search, no plain embedding; HyDE answers from hyde_top_k (8) chunks, capped
+    assert fakes["calls"] == [("hybrid", 8)] and fakes["max_per_source"] == 2
+    assert fakes["bm25_text"] == "q fake passage"  # BM25 gets HyDE's passages too
+    system_prompt, user_message = fakes["llm_calls"][0]
+    assert "hypothetical example answers" in system_prompt  # told how its docs were found
+    assert "fake passage" not in user_message  # HyDE's passages never reach the answer model
     assert {c.source for c in traced} == {"hyde.txt", "bm25.txt"}
     assert response.metadata.hyde_hypotheses == ["fake passage"]
     assert response.metadata.tokens_used == 120 + 100  # HyDE call + answer
@@ -242,7 +298,7 @@ async def test_crag_corrects_the_context_and_sets_confidence(fakes, monkeypatch)
         "k8s 1.40?", {"search_mode": "hybrid", "enable_crag": True}
     )
     assert response.sources == ["https://x.io"]
-    assert "[1] (source: https://x.io)" in fakes["llm_calls"][0][1]
+    assert "<<DOCUMENT id=1 source=https://x.io>>" in fakes["llm_calls"][0][1]
     assert response.metadata.crag is not None and response.metadata.crag.action == "incorrect"
     assert response.confidence is None  # web results replaced the graded chunks
     assert response.metadata.tokens_used == 150
@@ -493,3 +549,55 @@ async def test_cache_disabled_always_runs_the_pipeline(fakes):
     await rag_service.run_rag_with_trace("What is a Pod?")
     response, _ = await rag_service.run_rag_with_trace("What is a Pod?")
     assert len(fakes["llm_calls"]) == 2 and response.metadata.cache_hits == {}
+
+
+# ---- Phase 6: grounding check (L10) ----
+
+
+@pytest.fixture
+def grounding(monkeypatch):
+    from app.models import GroundingResult
+    from app.security import grounding_check
+
+    monkeypatch.setattr(rag_service.settings, "grounding_enabled", True)
+    verdicts = []
+
+    async def check(answer, chunks, cited_documents=None):
+        return GroundingResult(score=verdicts.pop(0), claims=4, unsupported_claims=["x"],
+                               tokens_used=30)  # fmt: skip
+
+    monkeypatch.setattr(grounding_check, "check_grounding", check)
+    return verdicts
+
+
+async def test_unsupported_answer_is_replaced_and_not_cached(fakes, cache_on, grounding):
+    fakes["chunks"] = [chunk("pods.html", "Pods are the smallest units.", 0.9)]
+    grounding.extend([0.25, 0.3, 1.0])  # first answer, its one rewrite, then the next request
+    response, _ = await rag_service.run_rag_with_trace("What is a Pod?")
+    assert response.answer == rag_service.UNVERIFIED_ANSWER and response.confidence == 0.3
+    assert response.metadata.grounding is not None
+    assert response.metadata.grounding.action == "replaced"
+    assert response.metadata.grounding.regenerated  # the rewrite (0.3) beat 0.25, still < 0.5
+    assert response.metadata.tokens_used == 260  # answer 100 + rewrite 100 + 2 checks of 30
+    assert "NOT supported" in fakes["llm_calls"][1][1]  # the rewrite saw the bad statements
+    again, _ = await rag_service.run_rag_with_trace("What is a Pod?")
+    assert again.metadata.cache_hits == {"rag_answer": False}  # retried, not the cached refusal
+    assert again.answer == "A Pod is ... [1]" and again.confidence == 1.0
+
+
+async def test_grounded_answer_is_cached_with_its_score(fakes, cache_on, grounding):
+    fakes["chunks"] = [chunk("pods.html", "Pods are the smallest units.", 0.9)]
+    grounding.append(0.9)
+    await rag_service.run_rag_with_trace("What is a Pod?")
+    hit, _ = await rag_service.run_rag_with_trace("What is a Pod?")  # no second grounding call
+    assert hit.metadata.cache_hits == {"rag_answer": True} and hit.confidence == 0.9
+
+
+async def test_weak_answer_is_rewritten_once_and_the_better_one_kept(fakes, grounding):
+    fakes["chunks"] = [chunk("pods.html", "Pods are the smallest units.", 0.9)]
+    grounding.extend([0.6, 0.95])
+    response, _ = await rag_service.run_rag_with_trace("What is a Pod?")
+    meta = response.metadata.grounding
+    assert meta is not None and meta.regenerated and meta.first_score == 0.6
+    assert meta.action == "pass" and response.confidence == 0.95
+    assert len(fakes["llm_calls"]) == 2  # the answer and its one rewrite

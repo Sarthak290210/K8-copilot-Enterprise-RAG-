@@ -65,5 +65,5 @@ def test_security_golden_may_have_no_sources(tmp_path):
 
 def test_real_golden_file_is_valid():
     goldens = load_goldens(DEFAULT_GOLDENS_PATH)
-    assert len(goldens) == 44
-    assert len({g.id for g in goldens}) == 44
+    assert len(goldens) == 45  # q-045 (indirect injection) added in Phase 6
+    assert len({g.id for g in goldens}) == 45

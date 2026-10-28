@@ -125,3 +125,28 @@ def fuse_many(
         )
         for key in ordered
     ]
+
+
+def cap_per_source(
+    chunks: list[RetrievedChunk], max_per_source: int, top_k: int
+) -> list[RetrievedChunk]:
+    """The first `top_k` chunks, at most `max_per_source` from any one document.
+
+    Keeps the ranked order. If the cap leaves fewer than `top_k` (the candidates come from only
+    a few documents), the best skipped chunks fill the remaining slots. `max_per_source` <= 0
+    means no cap.
+    """
+    if max_per_source <= 0:
+        return chunks[:top_k]
+    kept: list[RetrievedChunk] = []
+    skipped: list[RetrievedChunk] = []
+    counts: dict[str, int] = {}
+    for chunk in chunks:
+        if counts.get(chunk.source, 0) < max_per_source:
+            counts[chunk.source] = counts.get(chunk.source, 0) + 1
+            kept.append(chunk)
+            if len(kept) == top_k:
+                return kept
+        else:
+            skipped.append(chunk)
+    return kept + skipped[: top_k - len(kept)]

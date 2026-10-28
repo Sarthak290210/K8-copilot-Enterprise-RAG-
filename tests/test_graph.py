@@ -242,3 +242,38 @@ async def test_cached_sql_still_waits_for_approval(fakes, graph, monkeypatch, ca
     assert result.pending and pending is not None and pending.sql == fakes["sql"]
     assert result.response.metadata.cache_hits == {"sql_gen": True}
     assert fakes["executed"] == []  # nothing ran: the human still approves a cached query
+
+
+# ---- Phase 6: grounding check on sql / hybrid answers ----
+
+
+async def test_sql_answer_is_ground_checked_and_rewritten_once(fakes, graph, monkeypatch):
+    from app.models import GroundingResult
+    from app.security import grounding_check
+
+    monkeypatch.setattr(agent.settings, "grounding_enabled", True)
+    verdicts = [0.5, 1.0]
+    seen = []
+
+    async def check(answer, chunks, cited_documents=None):
+        seen.append((answer, [c.source for c in chunks], cited_documents))
+        return GroundingResult(score=verdicts.pop(0), claims=2, unsupported_claims=["x"],
+                               tokens_used=25)  # fmt: skip
+
+    monkeypatch.setattr(grounding_check, "check_grounding", check)
+    fakes["sql"] = (
+        "SELECT count(*) AS n FROM incidents WHERE started_at >= CURRENT_DATE - INTERVAL '1 month'"
+    )
+    fakes["rows"] = [{"n": 0}]
+    qid = uuid.uuid4()
+    await agent.run_agent(graph, "How many P1 incidents last month?", None, qid)
+    result = await agent.resume_agent(graph, qid, approved=True)
+    response = result.response
+    assert seen[0][1] == ["query_results"] and seen[0][2] == 0  # the rows; no docs to cite
+    assert "fleet data ends" not in seen[0][0]  # the code's note isn't graded as a claim...
+    assert "our fleet data ends on 2026-05-16" in response.answer  # ...it's added after
+    assert "NOT supported" in fakes["llm"][-1][1]  # the rewrite got the feedback
+    grounding = response.metadata.grounding
+    assert grounding is not None and grounding.regenerated and response.confidence == 1.0
+    # routing 10 + SQL 20 + answer 30 + rewrite 30 + two checks of 25
+    assert response.metadata.tokens_used == 10 + 20 + 30 + 30 + 50
