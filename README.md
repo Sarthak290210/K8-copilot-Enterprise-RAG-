@@ -280,14 +280,6 @@ The `Makefile` lists every command. Without `make`, run the `uv run ...` line un
 - **Fail closed:** if the injection or toxicity models fail to load, requests are blocked (`SECURITY_FAIL_CLOSED=true`).
 - **Not DDoS protection:** the rate limits stop abuse from one user or IP. Put a CDN/WAF or a reverse proxy in front for real deployments.
 
-## 🚧 Known limitations
-
-- **Free-tier throughput:** Cerebras' free tier allows 5 requests per minute to the answer model and a new question uses 4–5 calls, so about one new question per minute.
-- **Paraphrased questions:** HyDE fixed most of them, but q-014 ("compute resources reserved") still doesn't find its documents, and q-016's score varies between runs.
-- **Vague questions** ("explain", "what is wrong") get a request for detail; answering them needs Self-RAG, planned as part of an adaptive pipeline.
-- **Injection-model false positive:** questions that start with "Ignore the X: how do I …" are flagged as prompt injection; rephrasing avoids the block.
-- **PII redaction is regex-based:** it doesn't catch personal names or street addresses.
-
 ## 🗺️ Roadmap
 
 - [ ] A full `defaults` evaluation of all the Phase 7 changes in one run
